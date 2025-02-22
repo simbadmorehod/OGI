@@ -1,0 +1,48 @@
+# Исключаем виртуальное окружение
+.venv/
+env/
+venv/
+
+# Кэшированные файлы Python
+__pycache__/
+*.py[cod]
+*.so
+
+# Логи и временные файлы
+*.log
+*.out
+*.pid
+*.lock
+*.swp
+*.swo
+*.swn
+nohup.out
+*.bak
+
+# Исключаем модели и большие файлы
+models/
+
+# Игнорируем файлы зависимостей (если не нужно пушить)
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Исключаем файлы IDE
+.idea/
+.vscode/
+*.iml
+
+# Исключаем временные файлы ОС
+.DS_Store
+Thumbs.db
+
+# Исключаем базу данных (если локальная)
+*.db
+*.sqlite
+*.sqlite3
+
+# Исключаем бэкапы
+*.tar
+*.zip
+*.gz
+*.rar
+*.7z
