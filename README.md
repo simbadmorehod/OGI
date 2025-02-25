@@ -25,17 +25,14 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# 3. Инициализировать БД
-python -m data.migrations.init_db
-
-
 # Запуск API сервера
 uvicorn api.main:app --host 0.0.0.0 --port 800
 
 # Дернуть за ручку API
 curl -X POST "http://localhost:8000/api/v1/search" \
 -H "Content-Type: application/json" \
--d '{"query": "BTC price prediction", "top_k": 5}'
+-d '{"query": "BTC price prediction", "top_k":5,
+  "detailed": true}'
 
 # Алгоритм обработки запроса
 graph TD
