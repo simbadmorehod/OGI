@@ -13,8 +13,8 @@ from models import Messages, MessageEmbeddings
 
 # Конфигурация
 EMBEDDING_DIM = 384  # Для bge-small-en-v1.5
-BATCH_SIZE = 1000  # Оптимальный размер батча для GPU (подберите под вашу видеокарту)
-MAX_TEXT_LENGTH = 512  # Максимальная длина текста
+BATCH_SIZE = 20000  # Оптимальный размер батча для GPU (подберите под вашу видеокарту)
+MAX_TEXT_LENGTH = 5000  # Максимальная длина текста
 
 # Настройка логирования
 logging.basicConfig(

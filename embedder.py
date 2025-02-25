@@ -25,7 +25,7 @@ class BGEEmbedder:
                 normalize_embeddings=True
             )
 
-    def embed_batch(self, texts: list[str], batch_size: int = 1000):
+    def embed_batch(self, texts: list[str], batch_size: int = 20000):
         if not texts or not all(isinstance(text, str) for text in texts):
             raise ValueError("❌ Ошибка: переданы некорректные данные (не все элементы - строки)")
         print(f"📥 Генерация эмбеддингов для {len(texts)} текстов...")
