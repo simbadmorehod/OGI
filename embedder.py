@@ -22,8 +22,7 @@ class BGEEmbedder:
             return self.model.encode(
                 text,
                 convert_to_numpy=True,
-                normalize_embeddings=True,
-                precision="fp16"  # Экономия памяти
+                normalize_embeddings=True
             )
 
     def embed_batch(self, texts: list[str]):

@@ -1,16 +1,18 @@
 import torch
-
 from deepseek_client import DeepSeekClient
 from embedder import BGEEmbedder
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from pydantic import BaseModel
 from database import SessionLocal
 from agent import CryptoChatAgent
 from faiss_loader import load_embeddings_to_faiss
 
+# Глобальные объекты, загружаются при старте приложения
+faiss_manager = load_embeddings_to_faiss()  # Создаем FAISS ОДИН РАЗ
+embedder = BGEEmbedder(device="cpu")
+deepseek = DeepSeekClient()
+
 app = FastAPI()
-agent = None  # Глобальный объект для агента
-faiss_manager = None
 
 
 class QuestionRequest(BaseModel):
@@ -18,8 +20,9 @@ class QuestionRequest(BaseModel):
     top_k: int
     detailed: bool = False
 
+
 def get_db():
-    """Зависимость FastAPI для получения сессии"""
+    """Создание сессии БД для каждого запроса"""
     db = SessionLocal()
     try:
         yield db
@@ -27,31 +30,21 @@ def get_db():
         db.close()
 
 
-# Убрать ненужные импорты моделей в начале
-# Заменить блок инициализации:
-
-@app.on_event("startup")
-def startup_event():
-    # Инициализация FAISS
-    app.state.faiss_manager = load_embeddings_to_faiss()
-
-    # Ленивая загрузка моделей
-    app.state.embedder = BGEEmbedder(device="cpu")
-    app.state.deepseek = DeepSeekClient()
-
-
 @app.post("/ask/")
-def ask_question(request: QuestionRequest):
-    # Создаем агент для каждого запроса
-    db = SessionLocal()
-    try:
-        agent = CryptoChatAgent(
-            db=db,
-            faiss_manager=app.state.faiss_manager,
-            deepseek=app.state.deepseek,
-            embedder=app.state.embedder
-        )
-        return {"response": agent.answer_question(request.question, request.top_k, request.detailed)}
-    finally:
-        db.close()
-        torch.mps.empty_cache()
+def ask_question(request: QuestionRequest, db=Depends(get_db)):
+    # Передаём уже загруженные объекты в CryptoChatAgent
+    agent = CryptoChatAgent(
+        db=db,
+        faiss_manager=faiss_manager,
+        deepseek=deepseek,
+        embedder=embedder
+    )
+    print(1)
+    print("🛑 Запускаем модель перед обработкой запроса")
+    # Закрытие DeepSeek
+    deepseek.start()
+    answer = agent.answer_question(request.question, request.top_k, request.detailed)
+    print("🛑 Освобождаем ресурсы, обработке запроса")
+    # Закрытие DeepSeek
+    deepseek.close()
+    return {"response": answer}

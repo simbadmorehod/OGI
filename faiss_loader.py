@@ -3,14 +3,13 @@ from faiss_manager import FaissManager
 import numpy as np
 from models import MessageEmbeddings
 
-
 def load_embeddings_to_faiss() -> FaissManager:
-    faiss_manager = FaissManager(dimension=384)  # Новый размер
+    """Загружает эмбеддинги из базы в FAISS, создавая новый индекс при запуске"""
+    faiss_manager = FaissManager(dimension=384)  # Новый индекс каждый раз
 
-    # Загрузка данных батчами
     batch_size = 500
     offset = 0
-    db = next(get_db())  # Получаем сессию базы данных
+    db = next(get_db())
 
     while True:
         embeddings_data = db.query(MessageEmbeddings).offset(offset).limit(batch_size).all()
@@ -23,8 +22,9 @@ def load_embeddings_to_faiss() -> FaissManager:
         faiss_manager.add_vectors(ids, vectors)
         offset += batch_size
 
-    print(f"✅ Всего загружено {faiss_manager.index.ntotal} векторов")
+    print(f"✅ FAISS загружен, всего векторов: {faiss_manager.index.ntotal}")
     return faiss_manager
+
 
 if __name__ == "__main__":
     faiss_manager = load_embeddings_to_faiss()
