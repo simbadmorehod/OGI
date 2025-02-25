@@ -1,7 +1,6 @@
 # update_embeddings.py
 import logging
 from datetime import datetime
-
 import torch
 from sqlalchemy import and_, or_, func
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,7 +13,7 @@ from models import Messages, MessageEmbeddings
 
 # Конфигурация
 EMBEDDING_DIM = 384  # Для bge-small-en-v1.5
-BATCH_SIZE = 10000  # Оптимальный размер батча для CPU
+BATCH_SIZE = 1000  # Оптимальный размер батча для GPU (подберите под вашу видеокарту)
 MAX_TEXT_LENGTH = 512  # Максимальная длина текста
 
 # Настройка логирования
@@ -27,7 +26,6 @@ logging.basicConfig(
     ]
 )
 
-
 def validate_embedding(embedding: list) -> bool:
     """Проверка корректности эмбеддинга"""
     return (
@@ -36,6 +34,12 @@ def validate_embedding(embedding: list) -> bool:
             all(isinstance(x, float) for x in embedding)
     )
 
+def log_gpu_memory():
+    """Логирование использования памяти GPU"""
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1e6
+        reserved = torch.cuda.memory_reserved() / 1e6
+        logging.info(f"GPU Memory Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
 
 def update_all_embeddings(retries: int = 3):
     db = next(get_db())
@@ -82,11 +86,11 @@ def update_all_embeddings(retries: int = 3):
                         continue
 
                 # Генерация эмбеддингов на GPU
-                embeddings = []
+                embeddings = None
                 for attempt in range(retries):
                     try:
-                        embeddings = embedder.embed_batch(texts).cpu().numpy()  # Генерация на GPU, затем перемещение на CPU
-                        if len(embeddings) == len(valid_messages):
+                        embeddings = embedder.embed_batch(texts)  # Генерация на GPU
+                        if embeddings.shape[0] == len(valid_messages):
                             break
                     except Exception as e:
                         logging.error(f"Попытка {attempt + 1}/{retries} провалена: {str(e)}")
@@ -96,8 +100,8 @@ def update_all_embeddings(retries: int = 3):
 
                 # Валидация и сохранение
                 batch = []
-                for msg, emb in zip(valid_messages, embeddings):
-                    if not validate_embedding(emb):
+                for msg, emb in zip(valid_messages, embeddings.cpu().numpy()):  # Перемещаем данные на CPU
+                    if not validate_embedding(emb.tolist()):
                         logging.warning(f"Некорректный эмбеддинг для сообщения {msg.message_id}")
                         continue
                     batch.append({
@@ -123,7 +127,13 @@ def update_all_embeddings(retries: int = 3):
                         objects.append(obj)
                     db.bulk_save_objects(objects)
                     db.commit()
+
+                # Логирование использования памяти GPU
+                log_gpu_memory()
+
+                # Освобождение памяти GPU
                 torch.cuda.empty_cache()
+
                 offset += len(messages)
                 pbar.update(len(valid_messages))
 
@@ -134,7 +144,6 @@ def update_all_embeddings(retries: int = 3):
         db.close()
         torch.cuda.empty_cache()  # Освобождаем память GPU перед завершением
         logging.info("Процесс обновления завершен")
-
 
 if __name__ == "__main__":
     update_all_embeddings()

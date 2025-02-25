@@ -25,7 +25,7 @@ class BGEEmbedder:
                 normalize_embeddings=True
             )
 
-    def embed_batch(self, texts: list[str], batch_size: int = 256):
+    def embed_batch(self, texts: list[str], batch_size: int = 1000):
         if not texts or not all(isinstance(text, str) for text in texts):
             raise ValueError("❌ Ошибка: переданы некорректные данные (не все элементы - строки)")
         print(f"📥 Генерация эмбеддингов для {len(texts)} текстов...")
@@ -33,12 +33,12 @@ class BGEEmbedder:
         for i in range(0, len(texts), batch_size):
             batch_texts = texts[i:i + batch_size]
             with torch.no_grad(), autocast(enabled=(self.device == "cuda")):
-                batch_embeddings = self.model.encode(batch_texts, convert_to_numpy=True, normalize_embeddings=True)
-            embeddings.extend(batch_embeddings)
+                batch_embeddings = self.model.encode(batch_texts, convert_to_tensor=True, normalize_embeddings=True)
+            embeddings.append(batch_embeddings)
             if self.device == "cuda":
                 torch.cuda.empty_cache()
                 self.log_gpu_memory()
-        return embeddings
+        return torch.cat(embeddings, dim=0)  # Объединяем все батчи в один тензор
 
     def log_gpu_memory(self):
         if torch.cuda.is_available():
