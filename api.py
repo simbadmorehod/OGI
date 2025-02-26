@@ -1,6 +1,6 @@
 import torch
 from deepseek_client import DeepSeekClient
-from embedder import BGEEmbedder
+from embedder import StellaEmbedder
 from fastapi import FastAPI, Depends
 from pydantic import BaseModel
 from database import SessionLocal
@@ -9,7 +9,7 @@ from faiss_loader import load_embeddings_to_faiss
 
 # Глобальные объекты, загружаются при старте приложения
 faiss_manager = load_embeddings_to_faiss()  # Создаем FAISS ОДИН РАЗ
-embedder = BGEEmbedder(device="cpu")
+embedder = StellaEmbedder(device="cuda")
 deepseek = DeepSeekClient()
 
 app = FastAPI()

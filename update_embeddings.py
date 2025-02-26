@@ -8,7 +8,7 @@ from sqlalchemy.orm import aliased
 from tqdm import tqdm
 import numpy as np
 from database import get_db
-from embedder import BGEEmbedder
+from embedder import StellaEmbedder
 from models import Messages, MessageEmbeddings
 
 # Конфигурация
@@ -43,7 +43,7 @@ def log_gpu_memory():
 
 def update_all_embeddings(retries: int = 3):
     db = next(get_db())
-    embedder = BGEEmbedder(device="cuda")  # Используем GPU
+    embedder = StellaEmbedder(device="cuda")  # Используем GPU
     try:
         # Удаляем старые эмбеддинги с неверной размерностью
         db.query(MessageEmbeddings).delete()

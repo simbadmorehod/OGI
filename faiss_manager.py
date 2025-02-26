@@ -3,7 +3,7 @@ import numpy as np
 import os
 
 class FaissManager:
-    def __init__(self, dimension: int = 384, nlist: int = 10, index_path="faiss_index.bin"):
+    def __init__(self, dimension: int = 768, nlist: int = 10, index_path="faiss_index.bin"):
         """Менеджер FAISS с созданием нового индекса при запуске"""
         faiss.omp_set_num_threads(1)  # Ограничиваем потоки для стабильности
         self.dimension = dimension

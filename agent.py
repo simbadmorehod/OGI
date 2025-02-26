@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from models import Messages
 from deepseek_client import DeepSeekClient
-from embedder import BGEEmbedder
+from embedder import StellaEmbedder
 from faiss_manager import FaissManager
 from sqlalchemy.future import select
 from sqlalchemy.orm import Session
@@ -16,7 +16,7 @@ def fetch_messages_by_ids(db: Session, message_ids: list[int]) -> list[Messages]
 
 class CryptoChatAgent:
     def __init__(self, db: Session, faiss_manager: FaissManager,
-                 deepseek: DeepSeekClient, embedder: BGEEmbedder):
+                 deepseek: DeepSeekClient, embedder: StellaEmbedder):
         self.embedder = embedder  # Инжектируем готовый объект
         self.deepseek = deepseek
         self.faiss = faiss_manager
