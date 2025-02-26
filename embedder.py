@@ -3,17 +3,21 @@ import torch
 import numpy as np
 from torch.cuda.amp import autocast
 import spacy
-from langdetect import detect, DetectorFactory
+import logging
 
-# Для стабильности результатов langdetect
-DetectorFactory.seed = 0
-
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 class StellaEmbedder:
     def __init__(self, device=None):
-        # Определяем устройство (GPU или CPU)
+        logging.info("Инициализация StellaEmbedder...")
         self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
-        # Загружаем модель SentenceTransformer
+        logging.info(f"Выбрано устройство: {self.device}")
+
+        logging.info("Загрузка модели SentenceTransformer...")
         self.model = SentenceTransformer(
             "dunzhang/stella_en_400M_v5",
             device=self.device,
@@ -21,63 +25,57 @@ class StellaEmbedder:
             trust_remote_code=True
         )
         self.model.max_seq_length = 512
-        # Загружаем модели SpaCy для обоих языков
-        self.nlp_en = spacy.load("en_core_web_sm")
-        self.nlp_ru = spacy.load("ru_core_news_sm")
-        print(f"Размерность эмбеддингов: {self.model.get_sentence_embedding_dimension()}")
-        print(f"Модель загружена на устройство: {self.device}")
+        logging.info(f"Модель загружена на устройство: {self.device}")
+        logging.info(f"Размерность эмбеддингов: {self.model.get_sentence_embedding_dimension()}")
 
-    def detect_language(self, text: str) -> str:
-        """Определяет язык текста: 'en' или 'ru'"""
-        try:
-            lang = detect(text)
-            if lang in ['en', 'ru']:
-                return lang
-            return 'en'  # По умолчанию английский, если язык не распознан как 'ru'
-        except:
-            return 'en'  # В случае ошибки считаем текст английским
+        logging.info("Загрузка модели SpaCy...")
+        self.nlp = spacy.load("en_core_web_sm")
+        logging.info("Модель SpaCy загружена.")
 
     def preprocess_text(self, text: str) -> str:
-        """Предобработка текста с учётом языка"""
-        lang = self.detect_language(text)
-        # Выбираем модель SpaCy в зависимости от языка
-        nlp = self.nlp_en if lang == 'en' else self.nlp_ru
-        doc = nlp(text)
-        # Лемматизация, удаление стоп-слов и пунктуации
-        return " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
+        """Предобработка текста через SpaCy: лемматизация и удаление стоп-слов"""
+        logging.info("Начало предобработки текста...")
+        doc = self.nlp(text)
+        result = " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
+        logging.info("Предобработка текста завершена.")
+        return result
 
     def embed(self, text: str):
-        """Генерация эмбеддинга для одного текста"""
+        """Создание эмбеддинга для одного текста с предобработкой"""
+        logging.info("Генерация эмбеддинга для одного текста...")
         preprocessed_text = self.preprocess_text(text)
         if not preprocessed_text.strip():
+            logging.warning("Предобработанный текст пуст. Возвращается нулевой вектор.")
             return np.zeros(1024, dtype=np.float32)
 
-        # Разбиваем текст на части, если он длиннее max_seq_length
         sentences = [preprocessed_text[i:i + self.model.max_seq_length]
                      for i in range(0, len(preprocessed_text), self.model.max_seq_length)]
-        with torch.no_grad(), torch.amp.autocast('cuda', enabled=(self.device == "cuda")):
+        with torch.no_grad(), autocast('cuda', enabled=(self.device == "cuda")):
             embeddings = self.model.encode(
                 sentences,
                 convert_to_numpy=True,
                 normalize_embeddings=True
             )
-            return np.mean(embeddings, axis=0)  # Усредняем, если несколько частей
+            result = np.mean(embeddings, axis=0)
+            logging.info("Эмбеддинг успешно сгенерирован.")
+            return result
 
     def embed_batch(self, texts: list[str], batch_size: int = 1000):
-        """Генерация эмбеддингов для батча текстов"""
+        """Батчевая обработка текстов с GPU-оптимизацией"""
         if not texts or not all(isinstance(text, str) for text in texts):
             raise ValueError("❌ Ошибка: переданы некорректные данные (не все элементы - строки)")
-        print(f"📥 Генерация эмбеддингов для {len(texts)} текстов...")
+        logging.info(f"Генерация эмбеддингов для {len(texts)} текстов...")
 
-        # Предобработка всех текстов с учётом их языка
+        logging.info("Начало предобработки текстов...")
         preprocessed_texts = [self.preprocess_text(text) for text in texts]
+        logging.info("Предобработка текстов завершена.")
         embeddings = []
 
-        # Обрабатываем батчи
         for i in range(0, len(preprocessed_texts), batch_size):
+            logging.info(f"Обработка батча {i//batch_size + 1} из {len(preprocessed_texts)//batch_size + 1}...")
             batch_texts = preprocessed_texts[i:i + batch_size]
-            batch_texts = [t if t.strip() else " " for t in batch_texts]  # Заменяем пустые строки
-            with torch.no_grad(), torch.amp.autocast('cuda', enabled=(self.device == "cuda")):
+            batch_texts = [t if t.strip() else " " for t in batch_texts]
+            with torch.no_grad(), autocast('cuda', enabled=(self.device == "cuda")):
                 batch_embeddings = self.model.encode(
                     batch_texts,
                     convert_to_tensor=True,
@@ -85,13 +83,23 @@ class StellaEmbedder:
                 )
             embeddings.append(batch_embeddings)
             if self.device == "cuda":
-                torch.cuda.empty_cache()  # Очищаем память GPU
+                torch.cuda.empty_cache()
+                self.log_gpu_memory()
+            logging.info(f"Батч {i//batch_size + 1} обработан.")
 
-        return torch.cat(embeddings, dim=0)
+        result = torch.cat(embeddings, dim=0)
+        logging.info("Все эмбеддинги сгенерированы.")
+        return result
 
+    def log_gpu_memory(self):
+        """Логирование использования GPU"""
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated() / 1e6
+            reserved = torch.cuda.memory_reserved() / 1e6
+            logging.info(f"GPU Memory Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
 
 if __name__ == "__main__":
     embedder = StellaEmbedder(device="cuda")
-    texts = ["ETH is growing fast!", "Ethereum взлетает!"]
+    texts = ["ETH is growing fast!", "Ethereum is skyrocketing!"]
     embeddings = embedder.embed_batch(texts)
-    print(f"Размер батча эмбеддингов: {embeddings.shape}")
+    logging.info(f"Размер батча эмбеддингов: {embeddings.shape}")
