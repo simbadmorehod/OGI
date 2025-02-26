@@ -11,7 +11,8 @@ class StellaEmbedder:
         self.model = SentenceTransformer(
             "dunzhang/stella_en_400M_v5",
             device=self.device,
-            cache_folder="models/stella_en_400M_v5"
+            cache_folder="models/stella_en_400M_v5",
+            trust_remote_code=True
         )
         self.model.max_seq_length = 512  # Увеличиваем длину для Stella
         self.nlp = spacy.load("en_core_web_sm")  # Загружаем SpaCy для предобработки

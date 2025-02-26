@@ -1,49 +1,79 @@
+from sentence_transformers import SentenceTransformer
+import torch
 import numpy as np
-import faiss
-from embedder import StellaEmbedder
+from torch.cuda.amp import autocast
+import spacy
 
-# Ожидаемая размерность для Stella_en_400M_v5
-EXPECTED_DIMENSION = 768
 
-# Инициализация эмбеддера
-embedder = StellaEmbedder(device="cpu")  # Используйте "cuda", если есть GPU
+class StellaEmbedder:
+    def __init__(self, device=None):
+        self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
+        self.model = SentenceTransformer(
+            "dunzhang/stella_en_400M_v5",
+            device=self.device,
+            cache_folder="models/stella_en_400M_v5",
+            trust_remote_code=True  # Добавляем разрешение на выполнение удаленного кода
+        )
+        self.model.max_seq_length = 512
+        self.nlp = spacy.load("en_core_web_sm")
+        print(f"Embedding dim: {self.model.get_sentence_embedding_dimension()}")  # 768
+        print(f"Модель загружена на устройство: {self.device}")
 
-# Тестовые сообщения
-message1 = "ETH растет как на стероидах, скоро будет $5000!"
-message2 = "Ethereum взлетает, цена может дойти до 5000 долларов."
+    def preprocess_text(self, text: str) -> str:
+        """Предобработка текста через SpaCy: лемматизация и удаление стоп-слов"""
+        doc = self.nlp(text)
+        return " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
 
-# Генерация эмбеддингов
-embedding1 = embedder.embed(message1)
-embedding2 = embedder.embed(message2)
+    def embed(self, text: str):
+        """Создание эмбеддинга для одного текста с предобработкой"""
+        preprocessed_text = self.preprocess_text(text)
+        if not preprocessed_text.strip():
+            return np.zeros(768, dtype=np.float32)
 
-# Проверка размерности
-print(f"Размерность эмбеддинга 1: {embedding1.shape}")
-print(f"Размерность эмбеддинга 2: {embedding2.shape}")
+        sentences = [preprocessed_text[i:i + self.model.max_seq_length]
+                     for i in range(0, len(preprocessed_text), self.model.max_seq_length)]
+        with torch.no_grad(), autocast(enabled=(self.device == "cuda")):
+            embeddings = self.model.encode(
+                sentences,
+                convert_to_numpy=True,
+                normalize_embeddings=True
+            )
+            return np.mean(embeddings, axis=0)
 
-if embedding1.shape[0] != EXPECTED_DIMENSION or embedding2.shape[0] != EXPECTED_DIMENSION:
-    raise ValueError(
-        f"Ошибка: размерность эмбеддингов ({embedding1.shape[0]}) не соответствует ожидаемой ({EXPECTED_DIMENSION})"
-    )
+    def embed_batch(self, texts: list[str], batch_size: int = 1000):
+        """Батчевая обработка текстов с GPU-оптимизацией"""
+        if not texts or not all(isinstance(text, str) for text in texts):
+            raise ValueError("❌ Ошибка: переданы некорректные данные (не все элементы - строки)")
+        print(f"📥 Генерация эмбеддингов для {len(texts)} текстов...")
 
-# Создание FAISS индекса
-dimension = embedding1.shape[0]  # Должно быть 768 для Stella_en_400M_v5
-index = faiss.IndexFlatL2(dimension)  # Простой индекс с L2 расстоянием
+        preprocessed_texts = [self.preprocess_text(text) for text in texts]
+        embeddings = []
 
-# Подготовка первого эмбеддинга
-embedding1_array = np.array([embedding1], dtype=np.float32)
-faiss.normalize_L2(embedding1_array)  # Нормализация
-index.add(embedding1_array)  # Добавляем первый эмбеддинг
+        for i in range(0, len(preprocessed_texts), batch_size):
+            batch_texts = preprocessed_texts[i:i + batch_size]
+            batch_texts = [t if t.strip() else " " for t in batch_texts]
+            with torch.no_grad(), autocast(enabled=(self.device == "cuda")):
+                batch_embeddings = self.model.encode(
+                    batch_texts,
+                    convert_to_tensor=True,
+                    normalize_embeddings=True
+                )
+            embeddings.append(batch_embeddings)
+            if self.device == "cuda":
+                torch.cuda.empty_cache()
+                self.log_gpu_memory()
 
-# Подготовка второго эмбеддинга для поиска
-query_vector = np.array([embedding2], dtype=np.float32)
-faiss.normalize_L2(query_vector)  # Нормализация запроса
+        return torch.cat(embeddings, dim=0)
 
-# Поиск
-distances, indices = index.search(query_vector, k=1)
+    def log_gpu_memory(self):
+        """Логирование использования GPU"""
+        if torch.cuda.is_available():
+            print(f"GPU Memory Allocated: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
+            print(f"GPU Memory Reserved: {torch.cuda.memory_reserved() / 1e6:.2f} MB")
 
-# Вывод результата
-distance = distances[0][0]
-print(f"Сообщение 1: {message1}")
-print(f"Сообщение 2: {message2}")
-print(f"L2 расстояние между сообщениями: {distance:.4f}")
-print(f"Рекомендуемый порог: попробуйте значения меньше {distance:.4f}")
+
+if __name__ == "__main__":
+    embedder = StellaEmbedder(device="cuda")
+    texts = ["ETH is growing fast!", "Ethereum is skyrocketing!"]
+    embeddings = embedder.embed_batch(texts)
+    print(f"Размер батча эмбеддингов: {embeddings.shape}")
