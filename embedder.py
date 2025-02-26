@@ -15,9 +15,11 @@ logging.basicConfig(
 )
 
 class StellaEmbedder:
-    def __init__(self, model_name="ru_core_news_sm"):
+    def __init__(self, model_name="ru_core_news_sm", device=torch.device("cuda")):
         """Инициализация с указанием модели SpaCy"""
         self.nlp_model_name = model_name  # Имя модели SpaCy
+        self.device = device
+
 
     def preprocess_text(self, text: str) -> str:
         """Предобработка текста: лемматизация и удаление стоп-слов"""
@@ -35,7 +37,7 @@ class StellaEmbedder:
 
         sentences = [preprocessed_text[i:i + self.model.max_seq_length]
                      for i in range(0, len(preprocessed_text), self.model.max_seq_length)]
-        with torch.no_grad(), autocast('cuda', enabled=(self.device == "cuda")):
+        with torch.no_grad(), autocast('cuda', enabled=(self.device)):
             embeddings = self.model.encode(
                 sentences,
                 convert_to_numpy=True,
