@@ -1,8 +1,11 @@
-from sentence_transformers import SentenceTransformer
-import torch
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
+
 import numpy as np
-from torch.cuda.amp import autocast
 import spacy
+import torch
+from torch.cuda.amp import autocast
+from tqdm import tqdm
 import logging
 
 # Настройка логирования
@@ -11,34 +14,16 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-class StellaEmbedder:
-    def __init__(self, device=None):
-        logging.info("Инициализация StellaEmbedder...")
-        self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
-        logging.info(f"Выбрано устройство: {self.device}")
-
-        logging.info("Загрузка модели SentenceTransformer...")
-        self.model = SentenceTransformer(
-            "dunzhang/stella_en_400M_v5",
-            device=self.device,
-            cache_folder="models/stella_en_400M_v5",
-            trust_remote_code=True
-        )
-        self.model.max_seq_length = 512
-        logging.info(f"Модель загружена на устройство: {self.device}")
-        logging.info(f"Размерность эмбеддингов: {self.model.get_sentence_embedding_dimension()}")
-
-        logging.info("Загрузка модели SpaCy...")
-        self.nlp = spacy.load("en_core_web_sm")
-        logging.info("Модель SpaCy загружена.")
+class TextProcessor:
+    def __init__(self, model_name="ru_core_news_sm"):
+        """Инициализация с указанием модели SpaCy"""
+        self.nlp_model_name = model_name  # Имя модели SpaCy
 
     def preprocess_text(self, text: str) -> str:
-        """Предобработка текста через SpaCy: лемматизация и удаление стоп-слов"""
-        logging.info("Начало предобработки текста...")
-        doc = self.nlp(text)
-        result = " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
-        logging.info("Предобработка текста завершена.")
-        return result
+        """Предобработка текста: лемматизация и удаление стоп-слов"""
+        nlp = spacy.load(self.nlp_model_name)  # Загружаем модель в каждом потоке
+        doc = nlp(text)
+        return " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
 
     def embed(self, text: str):
         """Создание эмбеддинга для одного текста с предобработкой"""
@@ -60,36 +45,23 @@ class StellaEmbedder:
             logging.info("Эмбеддинг успешно сгенерирован.")
             return result
 
-    def embed_batch(self, texts: list[str], batch_size: int = 1000):
-        """Батчевая обработка текстов с GPU-оптимизацией"""
-        if not texts or not all(isinstance(text, str) for text in texts):
-            raise ValueError("❌ Ошибка: переданы некорректные данные (не все элементы - строки)")
-        logging.info(f"Генерация эмбеддингов для {len(texts)} текстов...")
+    def embed_batch(self, texts: list[str], max_workers: int = 8) -> list[str]:
+        """Параллельная предобработка текстов с ThreadPoolExecutor"""
+        logging.info(f"Обработка {len(texts)} текстов на {max_workers} потоках...")
 
-        logging.info("Начало предобработки текстов...")
-        preprocessed_texts = [self.preprocess_text(text) for text in texts]
-        logging.info("Предобработка текстов завершена.")
-        embeddings = []
+        # Используем partial для передачи функции предобработки
+        preprocess_func = partial(self.preprocess_text)
 
-        for i in range(0, len(preprocessed_texts), batch_size):
-            logging.info(f"Обработка батча {i//batch_size + 1} из {len(preprocessed_texts)//batch_size + 1}...")
-            batch_texts = preprocessed_texts[i:i + batch_size]
-            batch_texts = [t if t.strip() else " " for t in batch_texts]
-            with torch.no_grad(), autocast('cuda', enabled=(self.device == "cuda")):
-                batch_embeddings = self.model.encode(
-                    batch_texts,
-                    convert_to_tensor=True,
-                    normalize_embeddings=True
-                )
-            embeddings.append(batch_embeddings)
-            if self.device == "cuda":
-                torch.cuda.empty_cache()
-                self.log_gpu_memory()
-            logging.info(f"Батч {i//batch_size + 1} обработан.")
+        # Параллельная обработка с 8 потоками
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            preprocessed_texts = list(tqdm(
+                executor.map(preprocess_func, texts),
+                total=len(texts),
+                desc="Предобработка текстов"
+            ))
 
-        result = torch.cat(embeddings, dim=0)
-        logging.info("Все эмбеддинги сгенерированы.")
-        return result
+        logging.info("Предобработка завершена.")
+        return preprocessed_texts
 
     def log_gpu_memory(self):
         """Логирование использования GPU"""
@@ -98,8 +70,15 @@ class StellaEmbedder:
             reserved = torch.cuda.memory_reserved() / 1e6
             logging.info(f"GPU Memory Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
 
+
+# Пример использования
 if __name__ == "__main__":
-    embedder = StellaEmbedder(device="cuda")
-    texts = ["ETH is growing fast!", "Ethereum is skyrocketing!"]
-    embeddings = embedder.embed_batch(texts)
-    logging.info(f"Размер батча эмбеддингов: {embeddings.shape}")
+    # Создаем экземпляр процессора с моделью для русского языка
+    processor = TextProcessor(model_name="ru_core_news_sm")
+
+    # Пример текстов (дублируем для объема)
+    texts = ["Привет, мир!", "Это тест.", "Параллельная обработка крута.", "Еще один текст."] * 250
+
+    # Запуск обработки на 8 ядрах
+    result = processor.embed_batch(texts, max_workers=8)
+    print(f"Обработано {len(result)} текстов.")
