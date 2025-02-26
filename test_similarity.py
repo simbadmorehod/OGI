@@ -28,11 +28,11 @@ class StellaEmbedder:
         """Создание эмбеддинга для одного текста с предобработкой"""
         preprocessed_text = self.preprocess_text(text)
         if not preprocessed_text.strip():
-            return np.zeros(768, dtype=np.float32)
+            return np.zeros(1024, dtype=np.float32)
 
         sentences = [preprocessed_text[i:i + self.model.max_seq_length]
                      for i in range(0, len(preprocessed_text), self.model.max_seq_length)]
-        with torch.no_grad(), autocast(enabled=(self.device == "cuda")):
+        with torch.no_grad(), torch.amp.autocast('cuda', enabled=(self.device == "cuda")):
             embeddings = self.model.encode(
                 sentences,
                 convert_to_numpy=True,
@@ -52,7 +52,7 @@ class StellaEmbedder:
         for i in range(0, len(preprocessed_texts), batch_size):
             batch_texts = preprocessed_texts[i:i + batch_size]
             batch_texts = [t if t.strip() else " " for t in batch_texts]
-            with torch.no_grad(), autocast(enabled=(self.device == "cuda")):
+            with torch.no_grad(), torch.amp.autocast('cuda', enabled=(self.device == "cuda")):
                 batch_embeddings = self.model.encode(
                     batch_texts,
                     convert_to_tensor=True,
