@@ -7,7 +7,7 @@ def load_embeddings_to_faiss() -> FaissManager:
     """Загружает эмбеддинги из базы в FAISS, создавая новый индекс при запуске"""
     faiss_manager = FaissManager(dimension=384)  # Новый индекс каждый раз
 
-    batch_size = 500
+    batch_size = 50000
     offset = 0
     db = next(get_db())
 
