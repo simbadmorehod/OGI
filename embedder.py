@@ -14,7 +14,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-class TextProcessor:
+class StellaEmbedder:
     def __init__(self, model_name="ru_core_news_sm"):
         """Инициализация с указанием модели SpaCy"""
         self.nlp_model_name = model_name  # Имя модели SpaCy
@@ -74,7 +74,7 @@ class TextProcessor:
 # Пример использования
 if __name__ == "__main__":
     # Создаем экземпляр процессора с моделью для русского языка
-    processor = TextProcessor(model_name="ru_core_news_sm")
+    processor = StellaEmbedder(model_name="ru_core_news_sm")
 
     # Пример текстов (дублируем для объема)
     texts = ["Привет, мир!", "Это тест.", "Параллельная обработка крута.", "Еще один текст."] * 250
