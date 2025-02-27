@@ -7,6 +7,7 @@ from tqdm import tqdm
 import numpy as np
 import argparse
 import os
+import json
 
 # Установка переменной окружения перед импортом torch
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
@@ -17,8 +18,9 @@ from models import Messages, MessageEmbeddings
 
 # Конфигурация
 EMBEDDING_DIM = 1024  # Для intfloat/multilingual-e5-large-instruct
-BATCH_SIZE = 500  # Уменьшено с 1500 для предотвращения ошибки
+BATCH_SIZE = 500  # Уменьшено для предотвращения ошибки
 MAX_TEXT_LENGTH = 4096  # Максимальная длина текста
+CHECKPOINT_FILE = "embedding_checkpoint.json"  # Файл для сохранения прогресса
 
 # Настройка логирования
 logging.basicConfig(
@@ -45,6 +47,19 @@ def log_gpu_memory():
         reserved = torch.cuda.memory_reserved() / 1e6
         logging.info(f"GPU Memory Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
 
+def load_checkpoint():
+    """Загрузка последнего offset из файла контрольной точки"""
+    if os.path.exists(CHECKPOINT_FILE):
+        with open(CHECKPOINT_FILE, 'r') as f:
+            checkpoint = json.load(f)
+            return checkpoint.get('last_offset', 0)
+    return 0
+
+def save_checkpoint(offset):
+    """Сохранение текущего offset в файл контрольной точки"""
+    with open(CHECKPOINT_FILE, 'w') as f:
+        json.dump({'last_offset': offset}, f)
+
 def update_all_embeddings(clear_db: bool = False, retries: int = 3):
     db = next(get_db())
     embedder = StellaEmbedder(device=torch.device("cuda"))
@@ -54,7 +69,14 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
             logging.info("Очистка таблицы message_embeddings...")
             db.query(MessageEmbeddings).delete()
             db.commit()
+            if os.path.exists(CHECKPOINT_FILE):
+                os.remove(CHECKPOINT_FILE)  # Удаляем контрольную точку при очистке
 
+        # Загружаем последний обработанный offset
+        start_offset = load_checkpoint()
+        logging.info(f"Начинаем с offset: {start_offset}")
+
+        # Получаем сообщения для обработки
         ME = aliased(MessageEmbeddings)
         query = db.query(Messages).outerjoin(ME, ME.message_id == Messages.message_id).filter(
             or_(
@@ -68,11 +90,13 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
             logging.info("Нет новых или необработанных сообщений для обработки.")
             return
 
-        logging.info(f"Найдено {total_to_process} сообщений для обработки.")
-        processed_ids = set()
+        # Корректируем total_to_process с учетом уже обработанных
+        processed_count = query.offset(0).limit(start_offset).count()
+        remaining_to_process = total_to_process - processed_count
+        logging.info(f"Всего сообщений: {total_to_process}, осталось обработать: {remaining_to_process}")
 
-        with tqdm(total=total_to_process, desc="Обновление эмбеддингов") as pbar:
-            offset = 0
+        with tqdm(total=remaining_to_process, desc="Обновление эмбеддингов", initial=0) as pbar:
+            offset = start_offset
             while True:
                 messages = query.offset(offset).limit(BATCH_SIZE).all()
                 if not messages:
@@ -114,7 +138,6 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
                         "embedding": emb.tolist(),
                         "updated_at": datetime.now()
                     })
-                    processed_ids.add(msg.message_id)
 
                 if batch:
                     objects = []
@@ -135,10 +158,15 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
 
                 log_gpu_memory()
                 torch.cuda.empty_cache()
+
+                # Сохраняем прогресс после успешной обработки пакета
                 offset += len(messages)
+                save_checkpoint(offset)
                 pbar.update(len(valid_messages))
 
-        logging.info(f"Обработано {len(processed_ids)} уникальных сообщений.")
+        logging.info(f"Обработка завершена, последний offset: {offset}")
+        if os.path.exists(CHECKPOINT_FILE):
+            os.remove(CHECKPOINT_FILE)  # Удаляем контрольную точку после успешного завершения
 
     except Exception as e:
         logging.critical(f"Фатальная ошибка: {str(e)}")
