@@ -36,7 +36,7 @@ def main():
 
     # Генерируем эмбеддинги для тестовых сообщений
     logging.info("Генерация эмбеддингов для тестовых сообщений...")
-    test_embeddings = embedder.embed_batch(crypto_messages, encode_batch_size=5)
+    test_embeddings = embedder.embed_batch(crypto_messages)
 
     # Загружаем все эмбеддинги из базы один раз
     logging.info("Загрузка эмбеддингов из базы данных...")
