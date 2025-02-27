@@ -9,7 +9,7 @@ from faiss_loader import load_embeddings_to_faiss
 
 # Глобальные объекты, загружаются при старте приложения
 faiss_manager = load_embeddings_to_faiss()  # Создаем FAISS ОДИН РАЗ
-embedder = StellaEmbedder(device="cuda")
+embedder = StellaEmbedder(device=torch.device("cuda"))
 deepseek = DeepSeekClient()
 
 app = FastAPI()

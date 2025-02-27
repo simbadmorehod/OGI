@@ -1,6 +1,3 @@
-from concurrent.futures import ThreadPoolExecutor
-from functools import partial
-
 import numpy as np
 import spacy
 import torch
@@ -19,7 +16,7 @@ class StellaEmbedder:
     def __init__(self, model_name="ru_core_news_sm", device=torch.device("cuda")):
         """Инициализация с указанием модели SpaCy и устройства"""
         self.nlp_model_name = model_name  # Имя модели SpaCy (если предобработка нужна)
-        self.device = device if torch.cuda.is_available() else torch.device("cpu")
+        self.device = device
         logging.info(f"Выбрано устройство: {self.device}")
         # Загрузка модели SentenceTransformer на GPU
         self.model = SentenceTransformer("intfloat/multilingual-e5-large-instruct", device=self.device)
@@ -42,7 +39,7 @@ class StellaEmbedder:
             logging.warning("Текст пуст. Возвращается нулевой вектор.")
             return np.zeros(1024, dtype=np.float32)  # Обновлено с 1024 на 768
 
-        with torch.no_grad(), autocast(enabled=self.device.type == "cuda"):
+        with torch.no_grad(), autocast(enabled=True):
             embedding = self.model.encode(
                 preprocessed_text,
                 convert_to_numpy=True,
@@ -64,7 +61,7 @@ class StellaEmbedder:
         #     ))
         preprocessed_texts = texts  # Пропускаем предобработку
 
-        with torch.no_grad(), autocast(enabled=self.device.type == "cuda"):
+        with torch.no_grad(), autocast(enabled=True):
             embeddings = self.model.encode(
                 preprocessed_texts,
                 batch_size=20000,  # Батчевая обработка для ускорения
