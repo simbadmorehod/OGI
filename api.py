@@ -42,7 +42,6 @@ def ask_question(request: QuestionRequest, db=Depends(get_db)):
     print(1)
     print("🛑 Обработка запроса")
     answer = agent.answer_question(request.question, request.top_k, request.detailed)
-    # Закрытие DeepSeek
     return {"response": answer}
 
 @app.on_event("shutdown")
