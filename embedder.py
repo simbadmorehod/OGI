@@ -2,7 +2,7 @@ import numpy as np
 import spacy
 import torch
 from sentence_transformers import SentenceTransformer
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 from tqdm import tqdm
 import logging
 
@@ -39,7 +39,7 @@ class StellaEmbedder:
             logging.warning("Текст пуст. Возвращается нулевой вектор.")
             return np.zeros(1024, dtype=np.float32)  # Обновлено с 1024 на 768
 
-        with torch.no_grad(), autocast(enabled=True):
+        with torch.no_grad(), autocast('cuda'):
             embedding = self.model.encode(
                 preprocessed_text,
                 convert_to_numpy=True,
@@ -61,7 +61,7 @@ class StellaEmbedder:
         #     ))
         preprocessed_texts = texts  # Пропускаем предобработку
 
-        with torch.no_grad(), autocast(enabled=True):
+        with torch.no_grad(), autocast('cuda'):
             embeddings = self.model.encode(
                 preprocessed_texts,
                 batch_size=20000,  # Батчевая обработка для ускорения
