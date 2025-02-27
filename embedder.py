@@ -22,7 +22,7 @@ class StellaEmbedder:
         self.device = device if torch.cuda.is_available() else torch.device("cpu")
         logging.info(f"Выбрано устройство: {self.device}")
         # Загрузка модели SentenceTransformer на GPU
-        self.model = SentenceTransformer("dunzhang/stella_en_400M_v5", device=self.device, trust_remote_code=True)
+        self.model = SentenceTransformer("intfloat/multilingual-e5-large-instruct", device=self.device)
         logging.info("Модель SentenceTransformer загружена.")
 
     def preprocess_text(self, text: str) -> str:
@@ -40,7 +40,7 @@ class StellaEmbedder:
         preprocessed_text = text  # Пропускаем предобработку для скорости
         if not preprocessed_text.strip():
             logging.warning("Текст пуст. Возвращается нулевой вектор.")
-            return np.zeros(1024, dtype=np.float32)
+            return np.zeros(768, dtype=np.float32)  # Обновлено с 1024 на 768
 
         with torch.no_grad(), autocast(enabled=self.device.type == "cuda"):
             embedding = self.model.encode(

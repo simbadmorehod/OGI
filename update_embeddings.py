@@ -1,4 +1,3 @@
-# update_embeddings.py
 import logging
 from datetime import datetime
 import torch
@@ -7,13 +6,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import aliased
 from tqdm import tqdm
 import numpy as np
+import argparse
 from database import get_db
 from embedder import StellaEmbedder
 from models import Messages, MessageEmbeddings
 
 # Конфигурация
-EMBEDDING_DIM = 1024
-BATCH_SIZE = 1350  # Оптимальный размер батча для GPU (подберите под вашу видеокарту)
+EMBEDDING_DIM = 1024  # Обновлено для paraphrase-multilingua-mpnet-base-v2
+BATCH_SIZE = 1500  # Оптимальный размер батча для GPU (подберите под вашу видеокарту)
 MAX_TEXT_LENGTH = 4096  # Максимальная длина текста
 
 # Настройка логирования
@@ -29,9 +29,9 @@ logging.basicConfig(
 def validate_embedding(embedding: list) -> bool:
     """Проверка корректности эмбеддинга"""
     return (
-            isinstance(embedding, list) and
-            len(embedding) == EMBEDDING_DIM and
-            all(isinstance(x, float) for x in embedding)
+        isinstance(embedding, list) and
+        len(embedding) == EMBEDDING_DIM and
+        all(isinstance(x, float) for x in embedding)
     )
 
 def log_gpu_memory():
@@ -41,28 +41,33 @@ def log_gpu_memory():
         reserved = torch.cuda.memory_reserved() / 1e6
         logging.info(f"GPU Memory Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
 
-def update_all_embeddings(retries: int = 3):
+def update_all_embeddings(clear_db: bool = False, retries: int = 3):
     db = next(get_db())
     embedder = StellaEmbedder(device=torch.device("cuda"))
 
     try:
-        # Удаляем старые эмбеддинги с неверной размерностью
-        db.query(MessageEmbeddings).delete()
-        db.commit()
+        if clear_db:
+            # Очистка таблицы эмбеддингов только при указании --clear
+            logging.info("Очистка таблицы message_embeddings...")
+            db.query(MessageEmbeddings).delete()
+            db.commit()
 
         # Получаем сообщения для обработки
         ME = aliased(MessageEmbeddings)
         query = db.query(Messages).outerjoin(ME, ME.message_id == Messages.message_id).filter(
             or_(
-                ME.message_id == None,
-                Messages.local_date_creation > ME.updated_at
+                ME.message_id == None,  # Сообщения без эмбеддингов
+                Messages.local_date_creation > ME.updated_at  # Устаревшие эмбеддинги
             )
         ).order_by(Messages.message_id)
 
         total_to_process = query.count()
         if total_to_process == 0:
-            logging.info("Нет новых сообщений для обработки.")
+            logging.info("Нет новых или необработанных сообщений для обработки.")
             return
+
+        logging.info(f"Найдено {total_to_process} сообщений для обработки.")
+        processed_ids = set()  # Для отслеживания обработанных ID
 
         with tqdm(total=total_to_process, desc="Обновление эмбеддингов") as pbar:
             offset = 0
@@ -110,6 +115,7 @@ def update_all_embeddings(retries: int = 3):
                         "embedding": emb.tolist(),  # Преобразование numpy массива в список
                         "updated_at": datetime.now()
                     })
+                    processed_ids.add(msg.message_id)
 
                 # Пакетная вставка/обновление
                 if batch:
@@ -138,6 +144,8 @@ def update_all_embeddings(retries: int = 3):
                 offset += len(messages)
                 pbar.update(len(valid_messages))
 
+        logging.info(f"Обработано {len(processed_ids)} уникальных сообщений.")
+
     except Exception as e:
         logging.critical(f"Фатальная ошибка: {str(e)}")
         raise
@@ -146,5 +154,14 @@ def update_all_embeddings(retries: int = 3):
         torch.cuda.empty_cache()  # Освобождаем память GPU перед завершением
         logging.info("Процесс обновления завершен")
 
+def main():
+    # Парсинг аргументов командной строки
+    parser = argparse.ArgumentParser(description="Обновление эмбеддингов сообщений.")
+    parser.add_argument("--clear", action="store_true", help="Очистить таблицу эмбеддингов перед обработкой.")
+    args = parser.parse_args()
+
+    # Запускаем обновление с учетом параметра
+    update_all_embeddings(clear_db=args.clear)
+
 if __name__ == "__main__":
-    update_all_embeddings()
+    main()
