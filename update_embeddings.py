@@ -2,18 +2,22 @@ import logging
 from datetime import datetime
 import torch
 from sqlalchemy import and_, or_, func
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import aliased
 from tqdm import tqdm
 import numpy as np
 import argparse
+import os
+
+# Установка переменной окружения перед импортом torch
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
 from database import get_db
 from embedder import StellaEmbedder
 from models import Messages, MessageEmbeddings
 
 # Конфигурация
-EMBEDDING_DIM = 1024  # Обновлено для paraphrase-multilingua-mpnet-base-v2
-BATCH_SIZE = 1500  # Оптимальный размер батча для GPU (подберите под вашу видеокарту)
+EMBEDDING_DIM = 1024  # Для intfloat/multilingual-e5-large-instruct
+BATCH_SIZE = 1000  # Уменьшено с 1500 для предотвращения ошибки
 MAX_TEXT_LENGTH = 4096  # Максимальная длина текста
 
 # Настройка логирования
@@ -47,17 +51,15 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
 
     try:
         if clear_db:
-            # Очистка таблицы эмбеддингов только при указании --clear
             logging.info("Очистка таблицы message_embeddings...")
             db.query(MessageEmbeddings).delete()
             db.commit()
 
-        # Получаем сообщения для обработки
         ME = aliased(MessageEmbeddings)
         query = db.query(Messages).outerjoin(ME, ME.message_id == Messages.message_id).filter(
             or_(
-                ME.message_id == None,  # Сообщения без эмбеддингов
-                Messages.local_date_creation > ME.updated_at  # Устаревшие эмбеддинги
+                ME.message_id == None,
+                Messages.local_date_creation > ME.updated_at
             )
         ).order_by(Messages.message_id)
 
@@ -67,7 +69,7 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
             return
 
         logging.info(f"Найдено {total_to_process} сообщений для обработки.")
-        processed_ids = set()  # Для отслеживания обработанных ID
+        processed_ids = set()
 
         with tqdm(total=total_to_process, desc="Обновление эмбеддингов") as pbar:
             offset = 0
@@ -79,7 +81,6 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
                 texts = []
                 valid_messages = []
 
-                # Подготовка текстов
                 for msg in messages:
                     try:
                         text = (msg.text_message or "").strip()[:MAX_TEXT_LENGTH]
@@ -91,7 +92,6 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
                         logging.warning(f"Пропущено сообщение {msg.message_id}: {str(e)}")
                         continue
 
-                # Генерация эмбеддингов на GPU
                 embeddings = None
                 for attempt in range(retries):
                     try:
@@ -100,11 +100,10 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
                             break
                     except Exception as e:
                         logging.error(f"Попытка {attempt + 1}/{retries} провалена: {str(e)}")
-                        torch.cuda.empty_cache()  # Освобождаем память GPU при ошибке
+                        torch.cuda.empty_cache()
                         if attempt == retries - 1:
                             raise
 
-                # Валидация и сохранение
                 batch = []
                 for msg, emb in zip(valid_messages, embeddings):
                     if not validate_embedding(emb.tolist()):
@@ -112,12 +111,11 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
                         continue
                     batch.append({
                         "message_id": msg.message_id,
-                        "embedding": emb.tolist(),  # Преобразование numpy массива в список
+                        "embedding": emb.tolist(),
                         "updated_at": datetime.now()
                     })
                     processed_ids.add(msg.message_id)
 
-                # Пакетная вставка/обновление
                 if batch:
                     objects = []
                     for row in batch:
@@ -135,12 +133,8 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
                     db.bulk_save_objects(objects)
                     db.commit()
 
-                # Логирование использования памяти GPU
                 log_gpu_memory()
-
-                # Освобождение памяти GPU
                 torch.cuda.empty_cache()
-
                 offset += len(messages)
                 pbar.update(len(valid_messages))
 
@@ -151,16 +145,13 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
         raise
     finally:
         db.close()
-        torch.cuda.empty_cache()  # Освобождаем память GPU перед завершением
+        torch.cuda.empty_cache()
         logging.info("Процесс обновления завершен")
 
 def main():
-    # Парсинг аргументов командной строки
     parser = argparse.ArgumentParser(description="Обновление эмбеддингов сообщений.")
     parser.add_argument("--clear", action="store_true", help="Очистить таблицу эмбеддингов перед обработкой.")
     args = parser.parse_args()
-
-    # Запускаем обновление с учетом параметра
     update_all_embeddings(clear_db=args.clear)
 
 if __name__ == "__main__":
