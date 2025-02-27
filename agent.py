@@ -32,7 +32,7 @@ class CryptoChatAgent:
                 vector = vector.reshape(1, -1)
             results = self.faiss.search(vector, top_k)
             print(f"🔍 Результаты FAISS: {len(results)} записей")
-            message_ids = [msg['id'] for msg in results if msg.get('score', 0) > 0.1]
+            message_ids = [msg['id'] for msg in results if msg.get('score', 0) > 0.299]
             print(f"📌 Отфильтрованные ID: {message_ids}")
 
             return fetch_messages_by_ids(self.db, message_ids)
