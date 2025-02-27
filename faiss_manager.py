@@ -20,6 +20,7 @@ class FaissManager:
         self.create_new_index()
 
     def create_new_index(self):
+        self.clear_index()
         """Создаёт новый FAISS индекс IndexFlatL2 с IndexIDMap"""
         logging.info("Создание нового FAISS индекса IndexFlatL2 с ID...")
         base_index = faiss.IndexFlatL2(self.dimension)  # Базовый точный индекс
