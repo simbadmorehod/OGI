@@ -14,9 +14,9 @@ logging.basicConfig(
 CHUNK_SIZE = 10000
 
 
-def load_embeddings_to_faiss(dimension=1024, nlist=100, index_path="faiss_index.bin"):
-    """Загружает эмбеддинги из базы в FAISS порциями"""
-    faiss_manager = FaissManager(dimension=dimension, nlist=nlist, index_path=index_path)
+def load_embeddings_to_faiss(dimension=1024, index_path="faiss_index.bin"):
+    """Загружает эмбеддинги из базы в FAISS порциями с IndexFlatL2"""
+    faiss_manager = FaissManager(dimension=dimension, index_path=index_path)  # Убрано nlist
 
     db = SessionLocal()
     try:
