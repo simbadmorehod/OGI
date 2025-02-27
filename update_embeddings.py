@@ -17,7 +17,7 @@ from models import Messages, MessageEmbeddings
 
 # Конфигурация
 EMBEDDING_DIM = 1024  # Для intfloat/multilingual-e5-large-instruct
-BATCH_SIZE = 1000  # Уменьшено с 1500 для предотвращения ошибки
+BATCH_SIZE = 800  # Уменьшено с 1500 для предотвращения ошибки
 MAX_TEXT_LENGTH = 4096  # Максимальная длина текста
 
 # Настройка логирования
