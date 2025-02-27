@@ -58,7 +58,7 @@ def main():
 
     # Генерируем эмбеддинги для тестовых сообщений
     logging.info("Генерация эмбеддингов для тестовых сообщений...")
-    test_embeddings = embedder.embed_batch(crypto_messages, internal_batch_size=5)
+    test_embeddings = embedder.embed_batch(crypto_messages)
 
     # Проверяем базу и выводим результаты
     for msg_text, embedding in zip(crypto_messages, test_embeddings):
