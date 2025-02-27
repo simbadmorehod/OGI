@@ -1,79 +1,92 @@
-from sentence_transformers import SentenceTransformer
-import torch
+import logging
 import numpy as np
-from torch.cuda.amp import autocast
-import spacy
+import torch
+from database import get_db  # Предполагается, что у вас есть функция get_db
+from models import Messages, MessageEmbeddings  # Ваши модели
+from embedder import StellaEmbedder  # Импортируем ваш эмбеддер
+
+# Настройка логирования
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[logging.StreamHandler()]
+)
+
+# Конфигурация
+NUM_NEIGHBORS = 5
+
+# Тестовые сообщения на тему криптовалют (3 на английском, 2 на русском)
+crypto_messages = [
+    "Bitcoin reached a new all-time high today, surpassing $100,000!",
+    "Ethereum's latest upgrade promises faster transactions and lower fees.",
+    "Mining Bitcoin is getting harder with every passing day.",
+    "Биткоин снова растет, стоит ли покупать сейчас?",
+    "Криптовалюты в России: новые законы усложняют майнинг."
+]
 
 
-class StellaEmbedder:
-    def __init__(self, device=None):
-        self.device = device if device else ("cuda" if torch.cuda.is_available() else "cpu")
-        self.model = SentenceTransformer(
-            "dunzhang/stella_en_400M_v5",
-            device=self.device,
-            cache_folder="models/stella_en_400M_v5",
-            trust_remote_code=True  # Добавляем разрешение на выполнение удаленного кода
-        )
-        self.model.max_seq_length = 512
-        self.nlp = spacy.load("en_core_web_sm")
-        print(f"Embedding dim: {self.model.get_sentence_embedding_dimension()}")  # 768
-        print(f"Модель загружена на устройство: {self.device}")
+def cosine_distance(vec1, vec2):
+    """Вычисление косинусного расстояния между двумя векторами"""
+    dot_product = np.dot(vec1, vec2)
+    norm1 = np.linalg.norm(vec1)
+    norm2 = np.linalg.norm(vec2)
+    return 1 - (dot_product / (norm1 * norm2)) if norm1 * norm2 != 0 else float('inf')
 
-    def preprocess_text(self, text: str) -> str:
-        """Предобработка текста через SpaCy: лемматизация и удаление стоп-слов"""
-        doc = self.nlp(text)
-        return " ".join([token.lemma_ for token in doc if not token.is_stop and not token.is_punct])
 
-    def embed(self, text: str):
-        """Создание эмбеддинга для одного текста с предобработкой"""
-        preprocessed_text = self.preprocess_text(text)
-        if not preprocessed_text.strip():
-            return np.zeros(1024, dtype=np.float32)
+def find_nearest_neighbors(db, target_embedding, num_neighbors=NUM_NEIGHBORS):
+    """Поиск ближайших соседей по косинусному расстоянию в базе"""
+    all_embeddings = db.query(MessageEmbeddings).all()
+    if not all_embeddings:
+        logging.warning("База message_embeddings пуста!")
+        return []
 
-        sentences = [preprocessed_text[i:i + self.model.max_seq_length]
-                     for i in range(0, len(preprocessed_text), self.model.max_seq_length)]
-        with torch.no_grad(), torch.amp.autocast('cuda', enabled=(self.device == "cuda")):
-            embeddings = self.model.encode(
-                sentences,
-                convert_to_numpy=True,
-                normalize_embeddings=True
-            )
-            return np.mean(embeddings, axis=0)
+    distances = []
+    for emb in all_embeddings:
+        dist = cosine_distance(np.array(target_embedding), np.array(emb.embedding))
+        distances.append((emb.message_id, dist))
 
-    def embed_batch(self, texts: list[str], batch_size: int = 1000):
-        """Батчевая обработка текстов с GPU-оптимизацией"""
-        if not texts or not all(isinstance(text, str) for text in texts):
-            raise ValueError("❌ Ошибка: переданы некорректные данные (не все элементы - строки)")
-        print(f"📥 Генерация эмбеддингов для {len(texts)} текстов...")
+    # Сортируем по расстоянию и берем топ-N
+    distances.sort(key=lambda x: x[1])
+    return distances[:num_neighbors]
 
-        preprocessed_texts = [self.preprocess_text(text) for text in texts]
-        embeddings = []
 
-        for i in range(0, len(preprocessed_texts), batch_size):
-            batch_texts = preprocessed_texts[i:i + batch_size]
-            batch_texts = [t if t.strip() else " " for t in batch_texts]
-            with torch.no_grad(), torch.amp.autocast('cuda', enabled=(self.device == "cuda")):
-                batch_embeddings = self.model.encode(
-                    batch_texts,
-                    convert_to_tensor=True,
-                    normalize_embeddings=True
-                )
-            embeddings.append(batch_embeddings)
-            if self.device == "cuda":
-                torch.cuda.empty_cache()
-                self.log_gpu_memory()
+def main():
+    db = next(get_db())
 
-        return torch.cat(embeddings, dim=0)
+    # Инициализируем эмбеддер
+    embedder = StellaEmbedder(device=torch.device("cuda"))
 
-    def log_gpu_memory(self):
-        """Логирование использования GPU"""
-        if torch.cuda.is_available():
-            print(f"GPU Memory Allocated: {torch.cuda.memory_allocated() / 1e6:.2f} MB")
-            print(f"GPU Memory Reserved: {torch.cuda.memory_reserved() / 1e6:.2f} MB")
+    # Генерируем эмбеддинги для тестовых сообщений
+    logging.info("Генерация эмбеддингов для тестовых сообщений...")
+    test_embeddings = embedder.embed_batch(crypto_messages, internal_batch_size=5)
+
+    # Проверяем базу и выводим результаты
+    for msg_text, embedding in zip(crypto_messages, test_embeddings):
+        print("=" * 50)
+        print(f"Тестовое сообщение: {msg_text}")
+        print(f"Размерность эмбеддинга: {len(embedding)}")
+
+        # Находим ближайших соседей в базе
+        neighbors = find_nearest_neighbors(db, embedding)
+        if not neighbors:
+            print("Ближайшие соседи не найдены — база пуста.")
+            continue
+
+        print("Ближайшие соседи из базы:")
+        for neighbor_id, distance in neighbors:
+            neighbor_msg = db.query(Messages).filter_by(message_id=neighbor_id).first()
+            if neighbor_msg:
+                print("-" * 30)
+                print(f"ID: {neighbor_id}, Расстояние: {distance:.4f}")
+                print(f"Текст: {neighbor_msg.text_message}")
+            else:
+                print("-" * 30)
+                print(f"ID: {neighbor_id}, Расстояние: {distance:.4f}")
+                print("Текст: Сообщение не найдено в таблице messages.")
+        print("=" * 50)
+
+    db.close()
 
 
 if __name__ == "__main__":
-    embedder = StellaEmbedder(device="cuda")
-    texts = ["ETH is growing fast!", "Ethereum is skyrocketing!"]
-    embeddings = embedder.embed_batch(texts)
-    print(f"Размер батча эмбеддингов: {embeddings.shape}")
+    main()
