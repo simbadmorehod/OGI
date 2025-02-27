@@ -101,7 +101,7 @@ def update_all_embeddings(retries: int = 3):
 
                 # Валидация и сохранение
                 batch = []
-                for msg, emb in zip(valid_messages, embeddings.cpu().numpy()):  # Перемещаем данные на CPU
+                for msg, emb in zip(valid_messages, embeddings):
                     if not validate_embedding(emb.tolist()):
                         logging.warning(f"Некорректный эмбеддинг для сообщения {msg.message_id}")
                         continue
