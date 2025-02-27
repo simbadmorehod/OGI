@@ -22,7 +22,7 @@ class StellaEmbedder:
         self.device = device if torch.cuda.is_available() else torch.device("cpu")
         logging.info(f"Выбрано устройство: {self.device}")
         # Загрузка модели SentenceTransformer на GPU
-        self.model = SentenceTransformer("dunzhang/stella_en_400M_v5", device=self.device)
+        self.model = SentenceTransformer("dunzhang/stella_en_400M_v5", device=self.device, trust_remote_code=True)
         logging.info("Модель SentenceTransformer загружена.")
 
     def preprocess_text(self, text: str) -> str:
