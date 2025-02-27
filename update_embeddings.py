@@ -43,7 +43,8 @@ def log_gpu_memory():
 
 def update_all_embeddings(retries: int = 3):
     db = next(get_db())
-    embedder = StellaEmbedder(device="cuda")  # Используем GPU
+    embedder = StellaEmbedder(device=torch.device("cuda"))
+
     try:
         # Удаляем старые эмбеддинги с неверной размерностью
         db.query(MessageEmbeddings).delete()
