@@ -16,11 +16,10 @@ class FaissManager:
         faiss.omp_set_num_threads(1)
         self.dimension = dimension
         self.index_path = index_path
-
+        self.clear_index()
         self.create_new_index()
 
     def create_new_index(self):
-        self.clear_index()
         """Создаёт новый FAISS индекс IndexFlatL2 с IndexIDMap"""
         logging.info("Создание нового FAISS индекса IndexFlatL2 с ID...")
         base_index = faiss.IndexFlatL2(self.dimension)  # Базовый точный индекс
