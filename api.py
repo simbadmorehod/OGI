@@ -7,32 +7,32 @@ from database import SessionLocal
 from agent import CryptoChatAgent
 from faiss_loader import load_embeddings_to_faiss
 
-# Глобальные объекты, загружаются при старте приложения
-faiss_manager = load_embeddings_to_faiss()  # Создаем FAISS ОДИН РАЗ
+# Проверка CUDA
+if not torch.cuda.is_available():
+    raise RuntimeError("CUDA недоступен, сервер не может запуститься.")
+
+# Глобальные объекты
+faiss_manager = load_embeddings_to_faiss()
 embedder = StellaEmbedder(device=torch.device("cuda"))
 deepseek = DeepSeekClient()
+deepseek.start()  # Загружаем модель один раз при старте
 
 app = FastAPI()
-
 
 class QuestionRequest(BaseModel):
     question: str
     top_k: int
     detailed: bool = False
 
-
 def get_db():
-    """Создание сессии БД для каждого запроса"""
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-
 @app.post("/ask/")
 def ask_question(request: QuestionRequest, db=Depends(get_db)):
-    # Передаём уже загруженные объекты в CryptoChatAgent
     agent = CryptoChatAgent(
         db=db,
         faiss_manager=faiss_manager,
@@ -40,11 +40,12 @@ def ask_question(request: QuestionRequest, db=Depends(get_db)):
         embedder=embedder
     )
     print(1)
-    print("🛑 Запускаем модель перед обработкой запроса")
-    # Закрытие DeepSeek
-    deepseek.start()
+    print("🛑 Обработка запроса")
     answer = agent.answer_question(request.question, request.top_k, request.detailed)
-    print("🛑 Освобождаем ресурсы, обработке запроса")
     # Закрытие DeepSeek
-    deepseek.close()
     return {"response": answer}
+
+@app.on_event("shutdown")
+def shutdown_event():
+    print("🛑 Освобождаем ресурсы при завершении сервера")
+    deepseek.close()  # Освобождаем модель при выключении сервера
