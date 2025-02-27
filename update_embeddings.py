@@ -12,9 +12,9 @@ from embedder import StellaEmbedder
 from models import Messages, MessageEmbeddings
 
 # Конфигурация
-EMBEDDING_DIM = 1024  # Для bge-small-en-v1.5
+EMBEDDING_DIM = 1024
 BATCH_SIZE = 5000  # Оптимальный размер батча для GPU (подберите под вашу видеокарту)
-MAX_TEXT_LENGTH = 500  # Максимальная длина текста
+MAX_TEXT_LENGTH = 4096  # Максимальная длина текста
 
 # Настройка логирования
 logging.basicConfig(
