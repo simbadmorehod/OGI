@@ -40,7 +40,7 @@ class StellaEmbedder:
         preprocessed_text = text  # Пропускаем предобработку для скорости
         if not preprocessed_text.strip():
             logging.warning("Текст пуст. Возвращается нулевой вектор.")
-            return np.zeros(768, dtype=np.float32)  # Обновлено с 1024 на 768
+            return np.zeros(1024, dtype=np.float32)  # Обновлено с 1024 на 768
 
         with torch.no_grad(), autocast(enabled=self.device.type == "cuda"):
             embedding = self.model.encode(
