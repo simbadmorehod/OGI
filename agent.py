@@ -59,31 +59,31 @@ class CryptoChatAgent:
 
     def answer_question(self, question: str, top_k=10, detailed=False) -> str:
         try:
-            """Генерирует ответ на вопрос с учетом контекста сообщений"""
-            messages = self.search_messages(question, top_k=top_k)
-            print(f"messages: {len(messages)}")
-            if len(messages) >= 1:
-                analysis = self.analyze_context(messages, question)
-            else:
-                analysis = "Сообщений похожих под запрос нет, упомяни это при обращении к пользователю и выводам что ответ будет не полный"
-
-            print(f"analysis: {analysis}")
-
-            prompt = f"""На основе следующего контекста, ответь на вопрос:
-    
-            Контекст:
-            {analysis}
-    
-            Вопрос: {question}
-    
-            Ответ: """
-
-            if detailed and len(messages) > 1:
-                prompt = prompt + " Максимально подробно..."
-            else:
-                prompt = prompt + " Краткий вывод..."
-            print(3)
-            response = self.deepseek.answer_question(prompt)
+            # """Генерирует ответ на вопрос с учетом контекста сообщений"""
+            # messages = self.search_messages(question, top_k=top_k)
+            # print(f"messages: {len(messages)}")
+            # if len(messages) >= 1:
+            #     analysis = self.analyze_context(messages, question)
+            # else:
+            #     analysis = "Сообщений похожих под запрос нет, упомяни это при обращении к пользователю и выводам что ответ будет не полный"
+            #
+            # print(f"analysis: {analysis}")
+            #
+            # prompt = f"""На основе следующего контекста, ответь на вопрос:
+            #
+            # Контекст:
+            # {analysis}
+            #
+            # Вопрос: {question}
+            #
+            # Ответ: """
+            #
+            # if detailed and len(messages) > 1:
+            #     prompt = prompt + " Максимально подробно..."
+            # else:
+            #     prompt = prompt + " Краткий вывод..."
+            # print(3)
+            response = self.deepseek.answer_question(question)
             return response.strip() if response else "Извините, я не смог получить ответ."
 
         finally:

@@ -12,7 +12,8 @@ if not torch.cuda.is_available():
     raise RuntimeError("CUDA недоступен, сервер не может запуститься.")
 
 # Глобальные объекты
-faiss_manager = load_embeddings_to_faiss()
+# faiss_manager = load_embeddings_to_faiss()
+faiss_manager = ''
 embedder = StellaEmbedder(device=torch.device("cuda"))
 deepseek = DeepSeekClient()
 deepseek.start()  # Загружаем модель один раз при старте
