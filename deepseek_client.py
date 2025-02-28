@@ -79,7 +79,7 @@ class DeepSeekClient:
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=512,
+                max_new_tokens=256,
                 do_sample=True,
                 temperature=0.6,
                 top_p=0.95,
@@ -150,7 +150,7 @@ class DeepSeekClient:
         print(f"✅ Загружаем модель из {self.model_path} на {self.device}...")
 
         # Настраиваем 8-битную квантизацию через BitsAndBytesConfig
-        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+        quantization_config = BitsAndBytesConfig(load_in_4bit=True)
 
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
@@ -159,8 +159,7 @@ class DeepSeekClient:
             quantization_config=quantization_config,
             device_map="auto",  # Автоматически распределяет модель между GPU и CPU
             low_cpu_mem_usage=True,
-            attn_implementation="eager",
-            llm_int8_enable_fp32_cpu_offload=True  # Разрешаем выгрузку на CPU в формате float32
+            attn_implementation="eager"
         )
 
         if self.model.config.eos_token_id is None:
