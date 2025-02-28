@@ -151,10 +151,11 @@ class DeepSeekClient:
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
             trust_remote_code=True,
-            torch_dtype=torch.float32,  # Изменено с float16 на float32
+            torch_dtype=torch.float16,  # Используем float16 для буферов
+            load_in_8bit=True,  # Включаем 8-битную квантизацию
             device_map="auto",
-            low_cpu_mem_usage=True,  # Критически важная опция
-            attn_implementation="eager"  # Отключаем оптимизации внимания
+            low_cpu_mem_usage=True,
+            attn_implementation="eager"
         )
 
         if self.model.config.eos_token_id is None:
