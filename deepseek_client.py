@@ -150,12 +150,12 @@ class DeepSeekClient:
         print(f"✅ Загружаем модель из {self.model_path} на {self.device}...")
 
         # Настраиваем 8-битную квантизацию через BitsAndBytesConfig
-        quantization_config = BitsAndBytesConfig(load_in_4bit=True)
+        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
 
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
             trust_remote_code=True,
-            torch_dtype=torch.float32,
+            torch_dtype=torch.float16,
             quantization_config=quantization_config,
             device_map="auto",  # Автоматически распределяет модель между GPU и CPU
             low_cpu_mem_usage=True,
