@@ -79,7 +79,7 @@ class DeepSeekClient:
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=512,
+                max_new_tokens=1024,
                 do_sample=True,
                 temperature=0.6,
                 top_p=0.95,
