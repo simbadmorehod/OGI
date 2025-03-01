@@ -155,7 +155,7 @@ class DeepSeekClient:
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
             trust_remote_code=True,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.float32,
             quantization_config=quantization_config,
             device_map="auto",  # Автоматически распределяет модель между GPU и CPU
             low_cpu_mem_usage=True,
