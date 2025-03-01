@@ -79,7 +79,7 @@ class DeepSeekClient:
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=256,
+                max_new_tokens=512,
                 do_sample=True,
                 temperature=0.6,
                 top_p=0.95,
@@ -150,7 +150,7 @@ class DeepSeekClient:
         print(f"✅ Загружаем модель из {self.model_path} на {self.device}...")
 
         # Настраиваем 8-битную квантизацию через BitsAndBytesConfig
-        quantization_config = BitsAndBytesConfig(load_in_8bit=True)
+        quantization_config = BitsAndBytesConfig(load_in_4bit=True)
 
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
