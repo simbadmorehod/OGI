@@ -1,3 +1,4 @@
+import time
 import torch
 from deepseek_client import DeepSeekClient
 from embedder import StellaEmbedder
@@ -34,6 +35,7 @@ def get_db():
 
 @app.post("/ask/")
 def ask_question(request: QuestionRequest, db=Depends(get_db)):
+    start_time = time.time()  # Начало замера времени
     agent = CryptoChatAgent(
         db=db,
         faiss_manager=faiss_manager,
@@ -43,7 +45,10 @@ def ask_question(request: QuestionRequest, db=Depends(get_db)):
     print(1)
     print("🛑 Обработка запроса")
     answer = agent.answer_question(request.question, request.top_k, request.detailed)
-    return {"response": answer}
+    end_time = time.time()  # Конец замера времени
+    elapsed_time = end_time - start_time  # Вычисляем затраченное время
+    print(f"Время ответа: {elapsed_time:.2f} секунд")
+    return {"response": answer, "time_elapsed": elapsed_time}
 
 @app.on_event("shutdown")
 def shutdown_event():
