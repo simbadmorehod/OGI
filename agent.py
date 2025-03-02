@@ -47,13 +47,13 @@ class CryptoChatAgent:
 
     def analyze_context(self, messages: list[Messages], question: str) -> str:
         """Анализирует сообщения и формирует ключевые аспекты"""
-        context = "\n".join(f"{msg.full_name_sender}: {msg.text_message}" for msg in messages[:20])
+        context = "\n".join(f"{msg.full_name_sender or msg.username_sender}: {msg.text_message}" for msg in messages[:20])
         prompt = f"""Структура "full_name_sender:text_message"
 
-        сообщения({len(messages)} вопрос "{question}"):
+        сообщения({len(messages)}:
         {context}
         
-        Обрати внимание на всякие аргументы отправителей найди популярные или более значимые события и утверждения"""
+        Найди в сообщениях пользователей значимые события и утверждения для вопроса "{question}")"""
         print(2)
         return self.deepseek.answer_question(prompt)
 
@@ -69,19 +69,16 @@ class CryptoChatAgent:
 
             print(f"analysis: {analysis}")
 
-            prompt = f"""На основе следующего контекста, ответь на вопрос:
-
+            prompt = f"""
             Контекст:
             {analysis}
 
-            Вопрос: {question}
-
-            Ответ: """
+            Вопрос: {question} даже если ты сомневаешься в своих способностях отвечай как можешь"""
 
             if detailed and len(messages) > 1:
-                prompt = prompt + " Максимально подробно..."
+                prompt = prompt + " максимально подробно с домыслами и предположениями..."
             else:
-                prompt = prompt + " Краткий вывод..."
+                prompt = prompt + " емко и по делу..."
             print(3)
             response = self.deepseek.answer_question(question)
             return response.strip() if response else "Извините, я не смог получить ответ."
