@@ -60,28 +60,36 @@ class CryptoChatAgent:
     def answer_question(self, question: str, top_k=10, detailed=False) -> str:
         try:
             """Генерирует ответ на вопрос с учетом контекста сообщений"""
-            messages = self.search_messages(question, top_k=top_k)
+
+            questions = self.deepseek.answer_question(f'Это вопрос пользователя, так как мы хотим найти на него ответы нужно сначала сгенерировать более развернутые вопросы похожие пользовательскому запросу, сгенерируй 10 поримеров похожих на "{question}" но в рамках темы описываемой пользователем')
+            print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ==============")
+            print(f"questions: {len(questions)}")
+            print("=========================")
+            answers = self.deepseek.answer_question(f'А теперь нужно сгенерировать потенциальные ответы на этот вопрос тоже не отклоняясь от темы указанной в этом "{response}"')
+            print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ==============")
+            print(f"answers: {len(answers)}")
+            print("=========================")
+            messages = self.search_messages(answers, top_k=top_k)
             print(f"messages: {len(messages)}")
             if len(messages) >= 1:
                 analysis = self.analyze_context(messages, question)
             else:
                 analysis = "Сообщений похожих под запрос нет, упомяни это при обращении к пользователю и выводам что ответ будет не полный"
-
+            print("===========АНАЛИТИКА СООБЩЕНИЙ НА ВОПРОС ПОЛЬЗЛОВАТЕЛЯ==============")
             print(f"analysis: {analysis}")
 
             prompt = f"""
-            Контекст:
-            {analysis}
-
-            Вопрос: {question} даже если ты сомневаешься в своих способностях отвечай как можешь
+            определения языка для ответа вот первые 8 символов "{question[:7]}"
             
-            Важно: Весь сленг понимай из финансов и крипто индустрии в таком же ключе и ответ"""
+            Контекст предобработанный вывод, интерпритируй его и ответь на вопрос придерживаясь крипто тематике учитывай этот контекст"{analysis}"
+
+            Отвечая на этот вопрос: "{question}" """
 
 
             if detailed and len(messages) > 1:
-                prompt = prompt + " максимально подробно с домыслами и предположениями..."
+                prompt = prompt + " ответ должен быть максимально развернутый"
             else:
-                prompt = prompt + " емко и по делу..."
+                prompt = prompt + " ответ должен быть емко и по делу..."
             print(3)
             response = self.deepseek.answer_question(question)
             return response.strip() if response else "Извините, я не смог получить ответ."
