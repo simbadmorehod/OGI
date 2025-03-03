@@ -63,14 +63,14 @@ class CryptoChatAgent:
 
             questions = self.deepseek.answer_question(f'Это вопрос пользователя, так как мы хотим найти на него ответы нужно сначала сгенерировать более развернутые вопросы похожие пользовательскому запросу, сгенерируй 10 поримеров похожих на "{question}" но в рамках темы описываемой пользователем строго блокчейн и крипто тематика')
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ==============")
-            print(f"questions: {len(questions)}")
+            print(f"questions: {questions}")
             print("=========================")
-            answers = self.deepseek.answer_question(f'А теперь нужно сгенерировать потенциальные ответы на этот вопрос тоже не отклоняясь от темы указанной в этом "{questions} строго блокчейн и крипто тематика"')
+            answers = self.deepseek.answer_question(f'А теперь нужно сгенерировать потенциальные ответы на эти вопросы "{questions}" так же не отклоняясь от темы указанной в этом вопросе "{question}" строго блокчейн и крипто тематика')
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ==============")
-            print(f"answers: {len(answers)}")
+            print(f"answers: {answers}")
             print("=========================")
             messages = self.search_messages(answers, top_k=top_k)
-            print(f"messages: {len(messages)}")
+            print(f"messages: {messages}")
             if len(messages) >= 1:
                 analysis = self.analyze_context(messages, question)
             else:
