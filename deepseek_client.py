@@ -15,6 +15,7 @@ class DeepSeekClient:
     #              hf_model_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"):
     #     self.model_path = model_path
     #     self.hf_model_name = hf_model_name
+    snapshot_download(repo_id="meta-llama/Llama-2-13b-hf", local_dir="meta-llama/Llama-2-13b-hf")
     def __init__(self, model_path="models/Llama-2-13b-hf", hf_model_name="meta-llama/Llama-2-13b-hf"):
         self.model_path = model_path
         self.hf_model_name = hf_model_name

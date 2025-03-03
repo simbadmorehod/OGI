@@ -81,10 +81,10 @@ class CryptoChatAgent:
             print("===========НАЙДЕННЫЕ СООБЩЕНИЯ==============")
             # Поиск сообщений по каждому ответу
             messages = []
-            for answer in answers_list:
-                found_messages = self.search_messages(answer, top_k=top_k)
-                messages.extend(found_messages)
-            print(f"messages: {messages}")
+            # for answer in answers_list:
+            #     found_messages = self.search_messages(answer, top_k=top_k)
+            #     messages.extend(found_messages)
+            print(f"messages: {answers_list}")
 
             # Анализ контекста
             if len(messages) >= 1:
