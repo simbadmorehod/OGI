@@ -15,13 +15,13 @@ class DeepSeekClient:
     #              hf_model_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"):
     #     self.model_path = model_path
     #     self.hf_model_name = hf_model_name
-    # def __init__(self, model_path="models/Llama-2-13b-hf", hf_model_name="meta-llama/Llama-2-13b-hf"):
-    #     self.model_path = model_path
-    #     self.hf_model_name = hf_model_name
-    def __init__(self, model_path="models/DeepSeek-R1-Distill-Qwen-14B",
-                 hf_model_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"):
+    def __init__(self, model_path="models/Llama-2-13b-hf", hf_model_name="meta-llama/Llama-2-13b-hf"):
         self.model_path = model_path
         self.hf_model_name = hf_model_name
+    # def __init__(self, model_path="models/DeepSeek-R1-Distill-Qwen-14B",
+    #              hf_model_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"):
+    #     self.model_path = model_path
+    #     self.hf_model_name = hf_model_name
         self.device = self._get_best_device()
         print(f"Модель загружена на устройство: {self.device}")
 
