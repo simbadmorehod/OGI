@@ -2,7 +2,9 @@ import re
 
 import numpy as np
 import torch
-from models import Messages
+from scipy.stats import cosine
+
+from models import Messages, MessageEmbeddings
 from deepseek_client import DeepSeekClient
 from embedder import StellaEmbedder
 from faiss_manager import FaissManager
@@ -24,10 +26,12 @@ class CryptoChatAgent:
         self.faiss = faiss_manager
         self.db = db
 
-    def search_messages(self, query: str, top_k: int):
+    def search_messages(self, query: str, question: str, top_k: int):
         try:
-            print(f"🔍 Начало поиска для запроса: {query}")
+            print(f"🔍 Начало поиска для синтетического запроса: {query}")
             vector = np.array(self.embedder.embed(query), dtype=np.float32)
+            print(f"🔍 Пользовательский запрос: {question}")
+            question_vector = np.array(self.embedder.embed(question), dtype=np.float32)
             print(f"✅ Вектор сгенерирован. Размерность: {vector.shape}")
             # Приводим вектор к 2D форме
             if vector.ndim == 1:
@@ -36,8 +40,18 @@ class CryptoChatAgent:
             print(f"🔍 Результаты FAISS: {len(results)} записей")
             message_ids = [msg['id'] for msg in results if msg.get('score', 0) < 0.29]
             print(f"📌 Отфильтрованные ID: {message_ids}")
+            embeddings = self.db.query(MessageEmbeddings).filter(MessageEmbeddings.message_id.in_(message_ids)).all()
+            # Вычисление схожести с question_vector
+            similarities = []
+            for emb in embeddings:
+                emb_vector = np.array(emb.embedding, dtype=np.float32)
+                similarity = 1 - cosine(question_vector, emb_vector)
+                similarities.append((emb.message_id, similarity))
 
-            return fetch_messages_by_ids(self.db, message_ids)
+            # Находим самое похожее
+            most_similar = max(similarities, key=lambda x: x[1])
+            message_id = most_similar[0]
+            return message_id
         except Exception as e:
             print(f"🔥 Ошибка при поиске: {str(e)}")
             raise
@@ -49,11 +63,10 @@ class CryptoChatAgent:
 
     def analyze_context(self, messages: list[Messages], question: str) -> str:
         """Анализирует сообщения и формирует ключевые аспекты"""
-        context = "\n".join(f"{msg.full_name_sender or msg.username_sender}: {msg.text_message}" for msg in messages[:20])
+        context = "\n".join(f"{msg.full_name_sender or msg.username_sender}: {msg.text_message}" for msg in messages)
         prompt = f"""Структура ответа "full_name_sender:text_message/n"
-        Данные для анализа: {context}
-        
-        Найди в сообщениях пользователей значимые события и утверждения для вопроса "{question}")"""
+        Данные для анализа:\n\n {context}\n\n
+        Найди в сообщениях пользователей значимые события и утверждения для вопроса"""
         print(2)
         return self.deepseek.answer_question(prompt)
 
@@ -96,10 +109,15 @@ class CryptoChatAgent:
             # Поиск сообщений по каждому ответу
             messages = []
             for answer in answers:
-                found_messages = self.search_messages(answer, top_k=top_k)
-                messages.extend(found_messages)
+                found_messages = self.search_messages(answer, question, top_k=top_k)
+                messages.append(int(found_messages))
+            messages = fetch_messages_by_ids(self.db, messages)
             print("+++++++++++++++++++++++++++")
             print(f"messages: {messages}")
+
+            for message in messages:
+                print(f"Отправитель: {message.full_name_sender or message.username_sender}\nСоообщение: {message.text_message}\n")
+                print("--------------------------")
 
             # Анализ контекста
             if len(messages) >= 1:
