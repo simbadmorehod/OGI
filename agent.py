@@ -63,17 +63,30 @@ class CryptoChatAgent:
             questions = self.deepseek.answer_question(
                 f"Сгенерируй 10 вопросов, похожих на '{question}', в рамках блокчейн и крипто тематики. Верни только список вопросов, разделённых запятыми."
             )
-            questions = re.sub(r'<[^>]+>', '', questions).split(', ')
+            # Удаляем теги, если они есть
+            questions = re.sub(r'<[^>]+>', '', questions)
+
+            # Разбиваем по переносам строк
+            lines = questions.split('\n')
+
+            # Фильтруем строки, которые начинаются с чисел (1., 2., ..., 10.) и убираем пустые строки
+            question_list = [line.strip() for line in lines if line.strip() and re.match(r'^\d+\.\s', line)]
+
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ==============")
-            print(f"questions: {questions}")
+            print(f"questions: {question_list}")
             # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ [СПИСОК]==============")
             # print(f"questions_list: {questions}")
 
             # Генерация потенциальных ответов
             answers = self.deepseek.answer_question(
-                f"Сгенерируй краткие потенциальные ответы на следующие вопросы: {questions}. Ответы должны быть строго в рамках блокчейн и крипто тематики. В ответе верни только список ответов, разделённых запятыми, без лишнего текста."
+                f"Сгенерируй краткие потенциальные ответы на следующие вопросы: {question_list}. Ответы должны быть строго в рамках блокчейн и крипто тематики. В ответе верни только список ответов, разделённых запятыми, без лишнего текста."
             )
-            answers = re.sub(r'<[^>]+>', '', answers).split(', ')
+            answers = re.sub(r'<[^>]+>', '', answers)
+            # Разбиваем по переносам строк
+            lines = answers.split('\n')
+
+            # Фильтруем строки, которые начинаются с чисел (1., 2., ..., 10.) и убираем пустые строки
+            answers = [line.strip() for line in lines if line.strip() and re.match(r'^\d+\.\s', line)]
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ==============")
             print(f"answers: {answers}")
             # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ [СПИСОК]==============")
@@ -92,7 +105,7 @@ class CryptoChatAgent:
                 analysis = self.analyze_context(messages, question)
             else:
                 analysis = "Сообщений, похожих на запрос, нет. Ответ будет основан только на общих знаниях."
-            analysis = re.sub(r'<[^>]+>', '', analysis).split(', ')
+            analysis = re.sub(r'<[^>]+>', '', analysis)
             print("===========АНАЛИТИКА СООБЩЕНИЙ==============")
             print(f"analysis: {analysis}")
 
@@ -109,7 +122,7 @@ class CryptoChatAgent:
             {"Ответь максимально развёрнуто." if detailed and len(messages) > 1 else "Ответь кратко и по делу."}
             """
             response = self.deepseek.answer_question(prompt)
-            response = re.sub(r'<[^>]+>', '', response).split(', ')
+            response = re.sub(r'<[^>]+>', '', response)
             return response if response else "Извините, я не смог получить ответ."
         except Exception as e:
             return f"Произошла ошибка: {str(e)}"
