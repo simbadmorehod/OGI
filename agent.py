@@ -63,30 +63,25 @@ class CryptoChatAgent:
             questions = self.deepseek.answer_question(
                 f"Сгенерируй 10 вопросов, похожих на '{question}', в рамках блокчейн и крипто тематики. Верни только список вопросов, разделённых запятыми."
             )
-            pattern = r'<think>.*?</think>'
-            cleaned_text = re.sub(r'<[^>]+>', '', questions).split(', ')
-            questions = cleaned_text.strip()
+            questions = re.sub(r'<[^>]+>', '', questions).split(', ')
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ==============")
             print(f"questions: {questions}")
-            print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ [СПИСОК]==============")
-            questions_list = questions.split(", ")
-            print(f"questions_list: {questions_list}")
+            # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ [СПИСОК]==============")
+            # print(f"questions_list: {questions}")
 
             # Генерация потенциальных ответов
             answers = self.deepseek.answer_question(
                 f"Сгенерируй краткие потенциальные ответы на следующие вопросы: {questions}. Ответы должны быть строго в рамках блокчейн и крипто тематики. В ответе верни только список ответов, разделённых запятыми, без лишнего текста."
             )
-            cleaned_text = re.sub(r'<[^>]+>', '', questions).split(', ')
-            answers = cleaned_text.strip()
+            answers = re.sub(r'<[^>]+>', '', answers).split(', ')
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ==============")
             print(f"answers: {answers}")
-            print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ [СПИСОК]==============")
-            answers_list = answers.split(", ")
-            print(f"answers_list: {answers_list}")
+            # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ [СПИСОК]==============")
+            # print(f"answers_list: {answers}")
             print("===========НАЙДЕННЫЕ СООБЩЕНИЯ==============")
             # Поиск сообщений по каждому ответу
             messages = []
-            for answer in answers_list:
+            for answer in answers:
                 found_messages = self.search_messages(answer, top_k=top_k)
                 messages.extend(found_messages)
             print("+++++++++++++++++++++++++++")
@@ -97,8 +92,7 @@ class CryptoChatAgent:
                 analysis = self.analyze_context(messages, question)
             else:
                 analysis = "Сообщений, похожих на запрос, нет. Ответ будет основан только на общих знаниях."
-            cleaned_text = re.sub(r'<[^>]+>', '', questions).split(', ')
-            analysis = cleaned_text.strip()
+            analysis = re.sub(r'<[^>]+>', '', analysis).split(', ')
             print("===========АНАЛИТИКА СООБЩЕНИЙ==============")
             print(f"analysis: {analysis}")
 
@@ -115,9 +109,8 @@ class CryptoChatAgent:
             {"Ответь максимально развёрнуто." if detailed and len(messages) > 1 else "Ответь кратко и по делу."}
             """
             response = self.deepseek.answer_question(prompt)
-            cleaned_text = re.sub(r'<[^>]+>', '', questions).split(', ')
-            response = cleaned_text.strip()
-            return response.strip() if response else "Извините, я не смог получить ответ."
+            response = re.sub(r'<[^>]+>', '', response).split(', ')
+            return response if response else "Извините, я не смог получить ответ."
         except Exception as e:
             return f"Произошла ошибка: {str(e)}"
 
