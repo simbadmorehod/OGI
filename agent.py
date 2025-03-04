@@ -1,9 +1,7 @@
 import re
-
 import numpy as np
 import torch
-from scipy.stats import cosine
-
+from scipy.spatial.distance import cosine  # Это правильный импорт для расстояния
 from models import Messages, MessageEmbeddings
 from deepseek_client import DeepSeekClient
 from embedder import StellaEmbedder
@@ -86,29 +84,29 @@ class CryptoChatAgent:
             # Фильтруем строки, которые начинаются с чисел (1., 2., ..., 10.) и убираем пустые строки
             question_list = [line.strip() for line in lines if line.strip() and re.match(r'^\d+\.\s', line)]
 
-            print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ==============")
+            print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ[СПИСОК]==============")
             print(f"questions: {question_list}")
             # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ [СПИСОК]==============")
             # print(f"questions_list: {questions}")
 
-            # Генерация потенциальных ответов
-            answers = self.deepseek.answer_question(
-                f"Сгенерируй краткие потенциальные ответы на следующие вопросы: {question_list}. Ответы должны быть строго в рамках блокчейн и крипто тематики. В ответе верни только список ответов, пронумеруй по порядку все 10 потенциальных ответов ответов"
-            )
-            answers = re.sub(r'<[^>]+>', '', answers)
-            # Разбиваем по переносам строк
-            lines = answers.split('\n')
+            # # Генерация потенциальных ответов
+            # answers = self.deepseek.answer_question(
+            #     f"Сгенерируй краткие потенциальные ответы на следующие вопросы: {question_list}. Ответы должны быть строго в рамках блокчейн и крипто тематики. В ответе верни только список ответов, пронумеруй по порядку все 10 потенциальных ответов ответов"
+            # )
+            # answers = re.sub(r'<[^>]+>', '', answers)
+            # # Разбиваем по переносам строк
+            # lines = answers.split('\n')
 
             # Фильтруем строки, которые начинаются с чисел (1., 2., ..., 10.) и убираем пустые строки
-            answers = [line.strip() for line in lines if line.strip() and re.match(r'^\d+\.\s', line)]
-            print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ==============")
-            print(f"answers: {answers}")
+            # answers = [line.strip() for line in lines if line.strip() and re.match(r'^\d+\.\s', line)]
+            # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ==============")
+            # print(f"answers: {answers}")
             # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ [СПИСОК]==============")
             # print(f"answers_list: {answers}")
             print("===========НАЙДЕННЫЕ СООБЩЕНИЯ==============")
             # Поиск сообщений по каждому ответу
             messages = []
-            for answer in answers:
+            for answer in question_list:
                 found_messages = self.search_messages(answer, question, top_k=top_k)
                 messages.append(int(found_messages))
             messages = fetch_messages_by_ids(self.db, messages)
