@@ -65,7 +65,8 @@ class CryptoChatAgent:
             )
             # Удаляем теги, если они есть
             questions = re.sub(r'<[^>]+>', '', questions)
-
+            print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ==============")
+            print(f"questions: {questions}")
             # Разбиваем по переносам строк
             lines = questions.split('\n')
 

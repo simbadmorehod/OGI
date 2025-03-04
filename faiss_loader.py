@@ -43,6 +43,8 @@ def load_embeddings_to_faiss(dimension=1024, index_path="faiss_index.bin"):
 
                 faiss_manager.add_vectors(chunk_ids, np.array(chunk_embeddings, dtype=np.float32))
                 pbar.update(len(chunk))
+                if faiss_manager.index.ntotal > 10000:
+                    break
 
         # Проверяем количество записей в индексе после загрузки
         loaded_total = faiss_manager.index.ntotal
