@@ -1,3 +1,5 @@
+import re
+
 import numpy as np
 import torch
 from models import Messages
@@ -48,10 +50,8 @@ class CryptoChatAgent:
     def analyze_context(self, messages: list[Messages], question: str) -> str:
         """Анализирует сообщения и формирует ключевые аспекты"""
         context = "\n".join(f"{msg.full_name_sender or msg.username_sender}: {msg.text_message}" for msg in messages[:20])
-        prompt = f"""Структура "full_name_sender:text_message"
-
-        сообщения({len(messages)}:
-        {context}
+        prompt = f"""Структура ответа "full_name_sender:text_message/n"
+        Данные для анализа: {context}
         
         Найди в сообщениях пользователей значимые события и утверждения для вопроса "{question}")"""
         print(2)
@@ -63,6 +63,9 @@ class CryptoChatAgent:
             questions = self.deepseek.answer_question(
                 f"Сгенерируй 10 вопросов, похожих на следующий запрос пользователя, но более развёрнутых и строго в рамках блокчейн и крипто тематики: \"{question}\". В ответе верни только список вопросов, разделённых запятыми, без лишнего текста."
             )
+            pattern = r'<think>.*?</think>'
+            cleaned_text = re.sub(pattern, '', questions, flags=re.DOTALL)
+            questions = cleaned_text.strip()
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ==============")
             print(f"questions: {questions}")
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ [СПИСОК]==============")
@@ -73,6 +76,8 @@ class CryptoChatAgent:
             answers = self.deepseek.answer_question(
                 f"Сгенерируй краткие потенциальные ответы на следующие вопросы: {questions}. Ответы должны быть строго в рамках блокчейн и крипто тематики. В ответе верни только список ответов, разделённых запятыми, без лишнего текста."
             )
+            cleaned_text = re.sub(pattern, '', answers, flags=re.DOTALL)
+            answers = cleaned_text.strip()
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ==============")
             print(f"answers: {answers}")
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ [СПИСОК]==============")
@@ -84,6 +89,7 @@ class CryptoChatAgent:
             for answer in answers_list:
                 found_messages = self.search_messages(answer, top_k=top_k)
                 messages.extend(found_messages)
+            print("+++++++++++++++++++++++++++")
             print(f"messages: {messages}")
 
             # Анализ контекста
@@ -91,6 +97,8 @@ class CryptoChatAgent:
                 analysis = self.analyze_context(messages, question)
             else:
                 analysis = "Сообщений, похожих на запрос, нет. Ответ будет основан только на общих знаниях."
+            cleaned_text = re.sub(pattern, '', analysis, flags=re.DOTALL)
+            analysis = cleaned_text.strip()
             print("===========АНАЛИТИКА СООБЩЕНИЙ==============")
             print(f"analysis: {analysis}")
 
@@ -98,7 +106,7 @@ class CryptoChatAgent:
             prompt = f"""
             Ты — эксперт по блокчейну и криптовалютам. Пользователь задал вопрос: \"{question}\".
 
-            У тебя есть следующий контекст из похожих сообщений: {analysis}.
+            У тебя есть результат анализа из похожих сообщений: {analysis}.
 
             Используй этот контекст, чтобы ответить на вопрос пользователя. Если контекст не содержит полезной информации, дай ответ на основе своих знаний.
 
@@ -107,6 +115,8 @@ class CryptoChatAgent:
             {"Ответь максимально развёрнуто." if detailed and len(messages) > 1 else "Ответь кратко и по делу."}
             """
             response = self.deepseek.answer_question(prompt)
+            cleaned_text = re.sub(pattern, '', response, flags=re.DOTALL)
+            response = cleaned_text.strip()
             return response.strip() if response else "Извините, я не смог получить ответ."
         except Exception as e:
             return f"Произошла ошибка: {str(e)}"
