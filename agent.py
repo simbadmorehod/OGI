@@ -61,10 +61,10 @@ class CryptoChatAgent:
         try:
             # Генерация похожих вопросов
             questions = self.deepseek.answer_question(
-                f"Сгенерируй 10 вопросов, похожих на следующий запрос пользователя, но более развёрнутых и строго в рамках блокчейн и крипто тематики: \"{question}\". В ответе верни только список вопросов, разделённых запятыми, без лишнего текста."
+                f"Сгенерируй 10 вопросов, похожих на '{question}', в рамках блокчейн и крипто тематики. Верни только список вопросов, разделённых запятыми."
             )
             pattern = r'<think>.*?</think>'
-            cleaned_text = re.sub(pattern, '', questions, flags=re.DOTALL)
+            cleaned_text = re.sub(r'<[^>]+>', '', questions).split(', ')
             questions = cleaned_text.strip()
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ==============")
             print(f"questions: {questions}")
@@ -76,7 +76,7 @@ class CryptoChatAgent:
             answers = self.deepseek.answer_question(
                 f"Сгенерируй краткие потенциальные ответы на следующие вопросы: {questions}. Ответы должны быть строго в рамках блокчейн и крипто тематики. В ответе верни только список ответов, разделённых запятыми, без лишнего текста."
             )
-            cleaned_text = re.sub(pattern, '', answers, flags=re.DOTALL)
+            cleaned_text = re.sub(r'<[^>]+>', '', questions).split(', ')
             answers = cleaned_text.strip()
             print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ==============")
             print(f"answers: {answers}")
@@ -97,7 +97,7 @@ class CryptoChatAgent:
                 analysis = self.analyze_context(messages, question)
             else:
                 analysis = "Сообщений, похожих на запрос, нет. Ответ будет основан только на общих знаниях."
-            cleaned_text = re.sub(pattern, '', analysis, flags=re.DOTALL)
+            cleaned_text = re.sub(r'<[^>]+>', '', questions).split(', ')
             analysis = cleaned_text.strip()
             print("===========АНАЛИТИКА СООБЩЕНИЙ==============")
             print(f"analysis: {analysis}")
@@ -115,7 +115,7 @@ class CryptoChatAgent:
             {"Ответь максимально развёрнуто." if detailed and len(messages) > 1 else "Ответь кратко и по делу."}
             """
             response = self.deepseek.answer_question(prompt)
-            cleaned_text = re.sub(pattern, '', response, flags=re.DOTALL)
+            cleaned_text = re.sub(r'<[^>]+>', '', questions).split(', ')
             response = cleaned_text.strip()
             return response.strip() if response else "Извините, я не смог получить ответ."
         except Exception as e:
