@@ -9,7 +9,6 @@ import argparse
 import os
 import json
 
-# Установка переменной окружения перед импортом torch
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 from database import get_db
@@ -17,12 +16,11 @@ from embedder import StellaEmbedder
 from models import Messages, MessageEmbeddings
 
 # Конфигурация
-EMBEDDING_DIM = 1024  # Для intfloat/multilingual-e5-large-instruct
-BATCH_SIZE = 500  # Уменьшено для предотвращения ошибки
-MAX_TEXT_LENGTH = 4096  # Максимальная длина текста
-CHECKPOINT_FILE = "embedding_checkpoint.json"  # Файл для сохранения прогресса
+EMBEDDING_DIM = 1024
+BATCH_SIZE = 500
+MAX_TEXT_LENGTH = 4096
+CHECKPOINT_FILE = "embedding_checkpoint.json"
 
-# Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
@@ -32,70 +30,85 @@ logging.basicConfig(
     ]
 )
 
+
 def validate_embedding(embedding: list) -> bool:
-    """Проверка корректности эмбеддинга"""
     return (
-        isinstance(embedding, list) and
-        len(embedding) == EMBEDDING_DIM and
-        all(isinstance(x, float) for x in embedding)
+            isinstance(embedding, list) and
+            len(embedding) == EMBEDDING_DIM and
+            all(isinstance(x, float) for x in embedding)
     )
 
+
 def log_gpu_memory():
-    """Логирование использования памяти GPU"""
     if torch.cuda.is_available():
         allocated = torch.cuda.memory_allocated() / 1e6
         reserved = torch.cuda.memory_reserved() / 1e6
         logging.info(f"GPU Memory Allocated: {allocated:.2f} MB, Reserved: {reserved:.2f} MB")
 
+
 def load_checkpoint():
-    """Загрузка последнего offset из файла контрольной точки"""
     if os.path.exists(CHECKPOINT_FILE):
         with open(CHECKPOINT_FILE, 'r') as f:
             checkpoint = json.load(f)
             return checkpoint.get('last_offset', 0)
     return 0
 
+
 def save_checkpoint(offset):
-    """Сохранение текущего offset в файл контрольной точки"""
     with open(CHECKPOINT_FILE, 'w') as f:
         json.dump({'last_offset': offset}, f)
 
-def update_all_embeddings(clear_db: bool = False, retries: int = 3):
+
+def get_query(db, mode: str):
+    """Получение запроса в зависимости от режима"""
+    ME = aliased(MessageEmbeddings)
+
+    if mode == "incremental":
+        # Режим добавления новых сообщений
+        query = db.query(Messages).outerjoin(
+            ME, ME.message_id == Messages.message_id
+        ).filter(
+            or_(
+                ME.message_id == None,  # Новые сообщения без эмбеддингов
+                Messages.local_date_creation > ME.updated_at  # Обновленные сообщения
+            )
+        ).order_by(Messages.message_id)
+    else:  # full mode
+        # Полная переобработка всех сообщений
+        query = db.query(Messages).order_by(Messages.message_id)
+
+    return query
+
+
+def update_embeddings(mode: str = "incremental", retries: int = 3):
     db = next(get_db())
     embedder = StellaEmbedder(device=torch.device("cuda"))
 
     try:
-        if clear_db:
+        # Очистка базы только в режиме полной переработки
+        if mode == "full":
             logging.info("Очистка таблицы message_embeddings...")
             db.query(MessageEmbeddings).delete()
             db.commit()
             if os.path.exists(CHECKPOINT_FILE):
-                os.remove(CHECKPOINT_FILE)  # Удаляем контрольную точку при очистке
+                os.remove(CHECKPOINT_FILE)
 
-        # Загружаем последний обработанный offset
         start_offset = load_checkpoint()
         logging.info(f"Начинаем с offset: {start_offset}")
 
-        # Получаем сообщения для обработки
-        ME = aliased(MessageEmbeddings)
-        query = db.query(Messages).outerjoin(ME, ME.message_id == Messages.message_id).filter(
-            or_(
-                ME.message_id == None,
-                Messages.local_date_creation > ME.updated_at
-            )
-        ).order_by(Messages.message_id)
-
+        # Получаем соответствующий запрос
+        query = get_query(db, mode)
         total_to_process = query.count()
+
         if total_to_process == 0:
-            logging.info("Нет новых или необработанных сообщений для обработки.")
+            logging.info("Нет сообщений для обработки в выбранном режиме.")
             return
 
-        # Корректируем total_to_process с учетом уже обработанных
         processed_count = query.offset(0).limit(start_offset).count()
         remaining_to_process = total_to_process - processed_count
-        logging.info(f"Всего сообщений: {total_to_process}, осталось обработать: {remaining_to_process}")
+        logging.info(f"Режим: {mode}, Всего сообщений: {total_to_process}, Осталось: {remaining_to_process}")
 
-        with tqdm(total=remaining_to_process, desc="Обновление эмбеддингов", initial=0) as pbar:
+        with tqdm(total=remaining_to_process, desc=f"Обновление эмбеддингов ({mode})", initial=0) as pbar:
             offset = start_offset
             while True:
                 messages = query.offset(offset).limit(BATCH_SIZE).all()
@@ -119,7 +132,7 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
                 embeddings = None
                 for attempt in range(retries):
                     try:
-                        embeddings = embedder.embed_batch(texts)  # Генерация на GPU
+                        embeddings = embedder.embed_batch(texts)
                         if embeddings.shape[0] == len(valid_messages):
                             break
                     except Exception as e:
@@ -159,14 +172,13 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
                 log_gpu_memory()
                 torch.cuda.empty_cache()
 
-                # Сохраняем прогресс после успешной обработки пакета
                 offset += len(messages)
                 save_checkpoint(offset)
                 pbar.update(len(valid_messages))
 
-        logging.info(f"Обработка завершена, последний offset: {offset}")
+        logging.info(f"Обработка завершена в режиме {mode}, последний offset: {offset}")
         if os.path.exists(CHECKPOINT_FILE):
-            os.remove(CHECKPOINT_FILE)  # Удаляем контрольную точку после успешного завершения
+            os.remove(CHECKPOINT_FILE)
 
     except Exception as e:
         logging.critical(f"Фатальная ошибка: {str(e)}")
@@ -174,13 +186,20 @@ def update_all_embeddings(clear_db: bool = False, retries: int = 3):
     finally:
         db.close()
         torch.cuda.empty_cache()
-        logging.info("Процесс обновления завершен")
+        logging.info(f"Процесс обновления завершен в режиме {mode}")
+
 
 def main():
     parser = argparse.ArgumentParser(description="Обновление эмбеддингов сообщений.")
-    parser.add_argument("--clear", action="store_true", help="Очистить таблицу эмбеддингов перед обработкой.")
+    parser.add_argument(
+        "--mode",
+        choices=["incremental", "full"],
+        default="incremental",
+        help="Режим работы: incremental (только новые/обновленные) или full (полная переобработка)"
+    )
     args = parser.parse_args()
-    update_all_embeddings(clear_db=args.clear)
+    update_embeddings(mode=args.mode)
+
 
 if __name__ == "__main__":
     main()
