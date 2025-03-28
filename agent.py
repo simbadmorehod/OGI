@@ -28,7 +28,7 @@ class CryptoChatAgent:
 
     def search_vector(self, query: str, top_k: int = 5):
         try:
-            print(f"🔍 Начало поиска для запроса: {query}")
+            print(f"🔍 Начало поиска для запроса: {query} top_k:{top_k}")
             vector = np.array(self.embedder.embed(query), dtype=np.float32)
 
             # Поиск с использованием FAISS с учетом времени
