@@ -4,7 +4,7 @@ import logging
 import re
 import torch
 from huggingface_hub import snapshot_download
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -69,7 +69,7 @@ class DeepSeekClient:
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=1024,  # Уменьшено для экономии ресурсов
+                max_new_tokens=1024,
                 do_sample=True,
                 temperature=0.6,
                 top_p=0.95,
@@ -104,7 +104,7 @@ class DeepSeekClient:
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=1024,  # Уменьшено с 8192
+                max_new_tokens=1024,
                 do_sample=True,
                 temperature=0.6,
                 top_p=0.95,
@@ -134,18 +134,11 @@ class DeepSeekClient:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()  # Очищаем кэш перед загрузкой
 
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16
-        )
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
             trust_remote_code=True,
-            torch_dtype=torch.float16,
-            quantization_config=quantization_config,
-            device_map="auto",  # Автоматическое распределение
-            low_cpu_mem_usage=True,
-            attn_implementation="eager"
+            torch_dtype=torch.float16,  # Просто float16 без квантизации
+            device_map={"": self.device}  # Всё на одно устройство (cuda или cpu)
         )
 
         if self.model.config.eos_token_id is None:
