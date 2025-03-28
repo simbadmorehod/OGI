@@ -1,4 +1,6 @@
 import logging
+from datetime import datetime
+
 import numpy as np
 from tqdm import tqdm
 from database import SessionLocal
@@ -31,17 +33,33 @@ def load_embeddings_to_faiss(dimension=1024, index_path="faiss_index.bin"):
             logging.warning("База message_embeddings пуста!")
             return faiss_manager
 
+        # Функция для преобразования даты в числовое представление
+        def datetime_to_float(dt):
+            epoch = datetime(1970, 1, 1)
+            total_seconds = (dt - epoch).total_seconds()
+            return total_seconds
+
         with tqdm(total=total, desc="Загрузка эмбеддингов в FAISS", unit="rec") as pbar:
             for offset in range(0, total, CHUNK_SIZE):
-                chunk = db.query(MessageEmbeddings.message_id, MessageEmbeddings.embedding) \
+                chunk = db.query(MessageEmbeddings.message_id, MessageEmbeddings.embedding,
+                                 MessageEmbeddings.created_at) \
                     .offset(offset).limit(CHUNK_SIZE).all()
                 if not chunk:
                     continue
 
                 chunk_ids = [row.message_id for row in chunk]
                 chunk_embeddings = [row.embedding for row in chunk]
+                chunk_timestamps = [datetime_to_float(row.created_at) for row in chunk]
 
-                faiss_manager.add_vectors(chunk_ids, np.array(chunk_embeddings, dtype=np.float32))
+                # Создаем новые векторы, включая временную метку
+                new_embeddings = np.array([
+                    np.concatenate([embedding, [timestamp]]) for embedding, timestamp in
+                    zip(chunk_embeddings, chunk_timestamps)
+                ], dtype=np.float32)
+
+                # Добавляем векторы в индекс, включая временное поле
+                faiss_manager.add_vectors(chunk_ids, new_embeddings, chunk_timestamps)
+
                 pbar.update(len(chunk))
                 if faiss_manager.index.ntotal > 10000:
                     break

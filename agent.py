@@ -1,4 +1,6 @@
 import re
+from datetime import datetime, timedelta
+
 import numpy as np
 import torch
 from scipy.spatial.distance import cosine  # Это правильный импорт для расстояния
@@ -23,6 +25,32 @@ class CryptoChatAgent:
         self.deepseek = deepseek
         self.faiss = faiss_manager
         self.db = db
+
+    def search_vector(self, query: str, top_k: int = 5):
+        try:
+            print(f"🔍 Начало поиска для запроса: {query}")
+            vector = np.array(self.embedder.embed(query), dtype=np.float32)
+
+            # Поиск с использованием FAISS с учетом времени
+            results = self.faiss.search_with_time_constraint(vector, k=top_k * 2, time_constraint_days=1)
+
+            print(f"🔍 Результаты FAISS: {len(results)} записей")
+
+            # Получаем сообщения из базы данных
+            message_ids = [result['id'] for result in results if result['score'] < 0.29]
+
+            print(f"📌 Найдено - search_vector {len(message_ids)} сообщений ")
+
+            return message_ids
+
+        except Exception as e:
+            print(f"🔥 Ошибка при поиске search_vector: {str(e)}")
+            raise
+        finally:
+            if torch.backends.mps.is_available():
+                torch.mps.empty_cache()
+            elif torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     def search_messages(self, query: str, question: str, top_k: int):
         try:
@@ -62,30 +90,57 @@ class CryptoChatAgent:
     def analyze_context(self, messages: list[Messages], question: str) -> str:
         """Анализирует сообщения и формирует ключевые аспекты"""
         context = "\n".join(f"{msg.full_name_sender or msg.username_sender}: {msg.text_message}" for msg in messages)
-        prompt = f"""Структура ответа "full_name_sender:text_message/n"
+        prompt = f"""{question}\n\n
         Данные для анализа:\n\n {context}\n\n
-        Найди в сообщениях пользователей значимые события и утверждения для вопроса"""
+        """
         print(2)
         return self.deepseek.answer_question(prompt)
 
     def answer_question(self, question: str, top_k=10, detailed=False) -> str:
         try:
+            positive_messages = [
+                "Заебись, цена взлетела!",
+                "Круто, наконец-то рост!",
+                "Отлично, моя ставка сыграла!",
+                "Блин, как классно, что проект взлетел!",
+                "Вау, цена поднялась, заебись день!",
+                "Супер, мой портфель вырос за ночь!",
+                "Класс, новый ATH, молодцы!",
+                "Пиздец как круто, что добавили новые токены!",
+                "Снова в зеленой зоне, заебись!",
+                "Прорвал сопротивление, заебись новость!"
+            ]
+
+            negative_messages = [
+                "Пиздец, цена опять упала!",
+                "Блять, мой стейблкоин потерял пег!",
+                "Хуета какая-то, проект снова рухнул!",
+                "Пиздец, сколько можно терять?!",
+                "Блять, опять дамп на рынке, все летит вниз!",
+                "Пиздец, какой-то скам проект обрушил цену!",
+                "Хуета полная, мой портфель просел за день!",
+                "Блять, опять проблемы с выводом средств!",
+                "Пиздец, какой-то кит манипулирует рынком!",
+                "Хуета, опять слухи о запрете!"
+            ]
+
+
             # Генерация похожих вопросов
-            questions = self.deepseek.answer_question(
-                f"Сгенерируй 10 вопросов, похожих на '{question}', в рамках блокчейн и крипто тематики. Верни только список вопросов, пронумеруй по порядку все 10 вопросов"
-            )
-            # Удаляем теги, если они есть
-            questions = re.sub(r'<[^>]+>', '', questions)
-            print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ==============")
-            print(f"questions: {questions}")
-            # Разбиваем по переносам строк
-            lines = questions.split('\n')
-
-            # Фильтруем строки, которые начинаются с чисел (1., 2., ..., 10.) и убираем пустые строки
-            question_list = [line.strip() for line in lines if line.strip() and re.match(r'^\d+\.\s', line)]
-
-            print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ[СПИСОК]==============")
-            print(f"questions: {question_list}")
+            # questions = self.deepseek.answer_question(
+            #     f"Сгенерируй 10 вопросов, похожих на '{question}', в рамках блокчейн и крипто тематики. Верни только список вопросов, пронумеруй по порядку все 10 вопросов"
+            # )
+            # # Удаляем теги, если они есть
+            # questions = re.sub(r'<[^>]+>', '', questions)
+            # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ==============")
+            # print(f"questions: {questions}")
+            # # Разбиваем по переносам строк
+            # lines = questions.split('\n')
+            #
+            # # Фильтруем строки, которые начинаются с чисел (1., 2., ..., 10.) и убираем пустые строки
+            # question_list = [line.strip() for line in lines if line.strip() and re.match(r'^\d+\.\s', line)]
+            #
+            # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ[СПИСОК]==============")
+            # print(f"questions: {question_list}")
             # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ [СПИСОК]==============")
             # print(f"questions_list: {questions}")
 
@@ -104,12 +159,16 @@ class CryptoChatAgent:
             # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ [СПИСОК]==============")
             # print(f"answers_list: {answers}")
             print("===========НАЙДЕННЫЕ СООБЩЕНИЯ==============")
-            # Поиск сообщений по каждому ответу
+            # Поиск сообщений по каждому элементу в positive_messages и negative_messages
             messages = []
-            for answer in question_list:
-                found_messages = self.search_messages(answer, question, top_k=top_k)
-                messages.append(int(found_messages))
+            for message_list in [positive_messages, negative_messages]:
+                for message in message_list:
+                    found_messages = self.search_vector(message, top_k=top_k)
+                    messages.extend(found_messages)
+
+            # Получение самих сообщений по их ID
             messages = fetch_messages_by_ids(self.db, messages)
+
             print("+++++++++++++++++++++++++++")
             print(f"messages: {messages}")
 
@@ -126,21 +185,21 @@ class CryptoChatAgent:
             print("===========АНАЛИТИКА СООБЩЕНИЙ==============")
             print(f"analysis: {analysis}")
 
-            # Финальный промт
-            prompt = f"""
-            Ты — эксперт по блокчейну и криптовалютам. Пользователь задал вопрос: \"{question}\".
-
-            У тебя есть результат анализа из похожих сообщений: {analysis}.
-
-            Используй этот контекст, чтобы ответить на вопрос пользователя. Если контекст не содержит полезной информации, дай ответ на основе своих знаний.
-
-            Ответ должен быть на том же языке, что и вопрос (если вопрос на русском, ответь на русском).
-
-            {"Ответь максимально развёрнуто." if detailed and len(messages) > 1 else "Ответь кратко и по делу."}
-            """
-            response = self.deepseek.answer_question(prompt)
-            response = re.sub(r'<[^>]+>', '', response)
-            return response if response else "Извините, я не смог получить ответ."
+            # # Финальный промт
+            # prompt = f"""
+            # Ты — эксперт по блокчейну и криптовалютам. Пользователь задал вопрос: \"{question}\".
+            #
+            # У тебя есть результат анализа из похожих сообщений: {analysis}.
+            #
+            # Используй этот контекст, чтобы ответить на вопрос пользователя. Если контекст не содержит полезной информации, дай ответ на основе своих знаний.
+            #
+            # Ответ должен быть на том же языке, что и вопрос (если вопрос на русском, ответь на русском).
+            #
+            # {"Ответь максимально развёрнуто." if detailed and len(messages) > 1 else "Ответь кратко и по делу."}
+            # """
+            # response = self.deepseek.answer_question(prompt)
+            # response = re.sub(r'<[^>]+>', '', response)
+            return analysis if analysis else "Извините, я не смог получить ответ."
         except Exception as e:
             return f"Произошла ошибка: {str(e)}"
 
