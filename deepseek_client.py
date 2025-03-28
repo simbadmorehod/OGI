@@ -109,6 +109,9 @@ class DeepSeekClient:
         return parsed_json
 
     def answer_question(self, question: str) -> str:
+        if torch.cuda.is_available():
+            print("🧹 Очищаем кэш GPU перед генерацией...")
+            torch.cuda.empty_cache()  # Очищаем кэш GPU перед генерацией
         """
         Отвечает на переданный текстовый вопрос напрямую, без дополнительных промтов.
 
@@ -121,7 +124,7 @@ class DeepSeekClient:
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
-                max_new_tokens=16384,
+                max_new_tokens=8192,
                 do_sample=True,
                 temperature=0.6,
                 top_p=0.95,
@@ -150,17 +153,38 @@ class DeepSeekClient:
         print(f"✅ Загружаем модель из {self.model_path} на {self.device}...")
 
         # Настраиваем 8-битную квантизацию через BitsAndBytesConfig
-        quantization_config = BitsAndBytesConfig(load_in_4bit=True)
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16,
+            llm_int8_enable_fp32_cpu_offload=True  # Разрешаем выгрузку на CPU
+        )
+
+        custom_device_map = {
+            "model.decoder.layers": "cuda",  # Основные слои на GPU
+            "model.embed_tokens": "cpu",  # Эмбеддинги на CPU
+            "model.norm": "cpu",  # Нормализация на CPU
+            "lm_head": "cpu"  # Выходной слой на CPU
+        }
 
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
             trust_remote_code=True,
             torch_dtype=torch.float16,
             quantization_config=quantization_config,
-            device_map="auto",  # Автоматически распределяет модель между GPU и CPU
+            device_map=custom_device_map,  # Явно указываем распределение
             low_cpu_mem_usage=True,
             attn_implementation="eager"
         )
+
+        # self.model = AutoModelForCausalLM.from_pretrained(
+        #     self.model_path,
+        #     trust_remote_code=True,
+        #     torch_dtype=torch.float16,
+        #     quantization_config=quantization_config,
+        #     device_map="auto",  # Автоматически распределяет модель между GPU и CPU
+        #     low_cpu_mem_usage=True,
+        #     attn_implementation="eager"
+        # )
 
         if self.model.config.eos_token_id is None:
             self.model.config.eos_token_id = self.tokenizer.eos_token_id
