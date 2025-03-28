@@ -152,27 +152,16 @@ class DeepSeekClient:
 
         print(f"✅ Загружаем модель из {self.model_path} на {self.device}...")
 
-        # Конфигурация квантизации с поддержкой выгрузки на CPU
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
-            llm_int8_enable_fp32_cpu_offload=True  # Разрешаем выгрузку на CPU
+            bnb_4bit_compute_dtype=torch.float16
         )
-
-        # Кастомный device_map для распределения между GPU и CPU
-        custom_device_map = {
-            "model.decoder.layers": "cuda",  # Основные слои на GPU
-            "model.embed_tokens": "cpu",  # Эмбеддинги на CPU
-            "model.norm": "cpu",  # Нормализация на CPU
-            "lm_head": "cpu"  # Выходной слой на CPU
-        }
-
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
             trust_remote_code=True,
             torch_dtype=torch.float16,
             quantization_config=quantization_config,
-            device_map=custom_device_map,  # Используем кастомный device_map
+            device_map="auto",
             low_cpu_mem_usage=True,
             attn_implementation="eager"
         )
