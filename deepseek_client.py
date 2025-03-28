@@ -155,8 +155,7 @@ class DeepSeekClient:
         # Настраиваем 8-битную квантизацию через BitsAndBytesConfig
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16,
-            llm_int8_enable_fp32_cpu_offload=True  # Разрешаем выгрузку на CPU
+            bnb_4bit_compute_dtype=torch.float16
         )
 
         custom_device_map = {
