@@ -36,7 +36,8 @@ class FaissManager:
     def add_vectors(self, ids: list, vectors: np.ndarray, timestamps: list):
         """Добавляет векторы и временные метки в FAISS с ID и прогресс-баром"""
         # Преобразуем временные метки в числовой формат
-        timestamps_float = np.array([self.datetime_to_float(ts) for ts in timestamps]).reshape(-1, 1)
+        timestamps_float = np.array([self.datetime_to_float(datetime.fromtimestamp(ts)) for ts in timestamps]).reshape(
+            -1, 1)
 
         # Добавляем временные метки к векторам
         vectors_with_time = np.hstack((vectors, timestamps_float))
