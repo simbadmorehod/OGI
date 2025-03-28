@@ -173,7 +173,7 @@ class CryptoChatAgent:
             print(f"messages: {messages}")
 
             for message in messages:
-                print(f"Отправитель: {message.full_name_sender or message.username_sender}\nСоообщение: {message.text_message}\n")
+                print(f"Отправитель[{message.date_creation}]: {message.full_name_sender or message.username_sender}\nСоообщение: {message.text_message}\n")
                 print("--------------------------")
 
             # Анализ контекста
