@@ -52,11 +52,7 @@ def load_embeddings_to_faiss(dimension=1024, index_path="faiss_index.bin"):
                 chunk_embeddings = [row.embedding for row in chunk]
                 chunk_timestamps = [datetime_to_float(row.created_at) for row in chunk]
 
-                # Создаем новые векторы, включая временную метку
-                new_embeddings = np.array([
-                    np.concatenate([embedding, [timestamp]]) for embedding, timestamp in
-                    zip(chunk_embeddings, chunk_timestamps)
-                ], dtype=np.float32)
+                new_embeddings = np.array(chunk_embeddings, dtype=np.float32)
 
                 # Добавляем векторы в индекс, включая временное поле
                 faiss_manager.add_vectors(chunk_ids, new_embeddings, chunk_timestamps)
