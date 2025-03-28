@@ -13,10 +13,10 @@ logging.basicConfig(
 )
 
 class FaissManager:
-    def __init__(self, dimension: int = 1024, index_path="faiss_index.bin"):
+    def __init__(self, dimension: int = 1025, index_path="faiss_index.bin"):
         """Менеджер FAISS с IndexFlatL2 и IndexIDMap для точного поиска с ID и временными метками"""
         faiss.omp_set_num_threads(1)
-        self.dimension = dimension + 1  # +1 для временной метки
+        self.dimension = dimension
         self.index_path = index_path
         self.clear_index()
         self.create_new_index()
