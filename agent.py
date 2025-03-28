@@ -235,7 +235,6 @@ class CryptoChatAgent:
 
             # Получаем сами сообщения по их ID
             messages = fetch_messages_by_ids(self.db, unique_messages)
-            return messages
 
             for message in messages:
                 print(f"Отправитель[{message.date_creation}]: {message.full_name_sender or message.username_sender}\nСоообщение: {message.text_message}\n")
