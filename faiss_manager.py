@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import faiss
 import numpy as np
@@ -65,8 +65,10 @@ class FaissManager:
                 for score, idx in zip(distances[0], indices[0]) if idx != -1]
 
     def datetime_to_float(self, dt):
-        """Преобразует datetime в число секунд с 1970 года"""
-        epoch = datetime(1970, 1, 1)
+        """Преобразует datetime в число секунд с 1970 года, учитывая часовой пояс"""
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
         total_seconds = (dt - epoch).total_seconds()
         return total_seconds
 

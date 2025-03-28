@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 import numpy as np
 from tqdm import tqdm
@@ -33,9 +33,10 @@ def load_embeddings_to_faiss(dimension=1024, index_path="faiss_index.bin"):
             logging.warning("База message_embeddings пуста!")
             return faiss_manager
 
-        # Функция для преобразования даты в числовое представление
         def datetime_to_float(dt):
-            epoch = datetime(1970, 1, 1)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
             total_seconds = (dt - epoch).total_seconds()
             return total_seconds
 
