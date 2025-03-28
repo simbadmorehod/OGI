@@ -4,7 +4,7 @@ import logging
 import re
 import torch
 from huggingface_hub import snapshot_download
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,9 +53,6 @@ class DeepSeekClient:
             raise
 
     def analyze_query(self, question: str) -> dict:
-        """
-        Анализ запроса, генерация JSON с ключевыми словами.
-        """
         prompt = f"""
         You are a JSON generator.
         Return strictly ONE valid JSON object with fields "keywords" (array of strings) and "time_filter" (string).
@@ -82,7 +79,7 @@ class DeepSeekClient:
         if not matches:
             raise ValueError("❌ Модель не сгенерировала JSON!")
 
-        response_json = matches[1]  # Второй JSON-фрагмент
+        response_json = matches[1]
         try:
             parsed_json = json.loads(response_json)
         except json.JSONDecodeError as e:
@@ -95,9 +92,6 @@ class DeepSeekClient:
         if torch.cuda.is_available():
             print("🧹 Очищаем кэш GPU перед генерацией...")
             torch.cuda.empty_cache()
-        """
-        Отвечает на переданный текстовый вопрос напрямую, без дополнительных промтов.
-        """
         inputs = self.tokenizer(question, return_tensors="pt", max_length=512, truncation=True)
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
         print(4)
@@ -114,7 +108,6 @@ class DeepSeekClient:
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     def close(self):
-        """Явное освобождение ресурсов модели"""
         print("🔌 Закрытие DeepSeekClient...")
         del self.model
         del self.tokenizer
@@ -124,7 +117,6 @@ class DeepSeekClient:
             torch.mps.empty_cache()
 
     def start(self):
-        """Загружаем модели"""
         print("🔌 Запуск DeepSeekClient...")
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
         if self.tokenizer.eos_token is None:
@@ -132,13 +124,19 @@ class DeepSeekClient:
 
         print(f"✅ Загружаем модель из {self.model_path} на {self.device}...")
         if torch.cuda.is_available():
-            torch.cuda.empty_cache()  # Очищаем кэш перед загрузкой
+            torch.cuda.empty_cache()
 
+        # Включаем 8-битную квантизацию
+        quantization_config = BitsAndBytesConfig(
+            load_in_8bit=True,  # 8-бит вместо 4-бит
+            # bnb_8bit_compute_dtype=torch.float16  # Не используется в 8-битной квантизации
+        )
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_path,
             trust_remote_code=True,
-            torch_dtype=torch.float16,  # Просто float16 без квантизации
-            device_map={"": self.device}  # Всё на одно устройство (cuda или cpu)
+            torch_dtype=torch.float16,
+            quantization_config=quantization_config,
+            device_map={"": self.device}  # Всё на GPU (cuda)
         )
 
         if self.model.config.eos_token_id is None:
@@ -150,7 +148,7 @@ class DeepSeekClient:
 
 if __name__ == "__main__":
     client = DeepSeekClient()
-    client.start()  # Загружаем модель
+    client.start()
     question = "Какие новости о BTC за последний месяц?"
     result = client.analyze_query(question)
     print(result)
