@@ -16,17 +16,22 @@ logging.basicConfig(
 CHUNK_SIZE = 10000
 
 
-def load_embeddings_to_faiss(dimension=1025, index_path="faiss_index.bin"):
-    """Загружает эмбеддинги из базы в FAISS порциями с IndexFlatL2, очищая индекс в начале"""
-    faiss_manager = FaissManager(dimension=dimension, index_path=index_path)
-
+def load_embeddings_to_faiss(index_path="faiss_index.bin"):
     db = SessionLocal()
     try:
-        # Очищаем индекс перед загрузкой
+        # Получаем первый эмбеддинг для определения размерности
+        first_embedding = db.query(MessageEmbeddings.embedding).first()
+        if not first_embedding:
+            logging.warning("База message_embeddings пуста!")
+            return None
+        embedding_dim = len(first_embedding.embedding)
+        dimension = embedding_dim + 1  # +1 для временной метки
+        logging.info(f"Определена размерность эмбеддингов: {embedding_dim}, итоговая размерность: {dimension}")
+
+        faiss_manager = FaissManager(dimension=dimension, index_path=index_path)
         faiss_manager.clear_index()
         logging.info("FAISS индекс очищен перед началом загрузки.")
 
-        # Получаем общее количество записей в базе
         total = db.query(MessageEmbeddings).count()
         logging.info(f"Всего записей в базе: {total}")
         if total == 0:
@@ -53,15 +58,12 @@ def load_embeddings_to_faiss(dimension=1025, index_path="faiss_index.bin"):
                 chunk_timestamps = [datetime_to_float(row.created_at) for row in chunk]
 
                 new_embeddings = np.array(chunk_embeddings, dtype=np.float32)
-
-                # Добавляем векторы в индекс, включая временное поле
                 faiss_manager.add_vectors(chunk_ids, new_embeddings, chunk_timestamps)
 
                 pbar.update(len(chunk))
                 if faiss_manager.index.ntotal > 10000:
                     break
 
-        # Проверяем количество записей в индексе после загрузки
         loaded_total = faiss_manager.index.ntotal
         logging.info(f"Завершена загрузка. В FAISS индексе: {loaded_total} записей.")
         if loaded_total != total:
@@ -74,7 +76,6 @@ def load_embeddings_to_faiss(dimension=1025, index_path="faiss_index.bin"):
         raise
     finally:
         db.close()
-
 
 if __name__ == "__main__":
     faiss_manager = load_embeddings_to_faiss()
