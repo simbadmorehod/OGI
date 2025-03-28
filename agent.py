@@ -90,10 +90,21 @@ class CryptoChatAgent:
     def analyze_context(self, messages: list[Messages], question: str) -> str:
         """Анализирует сообщения и формирует ключевые аспекты"""
         context = "\n".join(f"{msg.full_name_sender or msg.username_sender}: {msg.text_message}" for msg in messages)
-        prompt = f"""{question}\n\n
-        Данные для анализа:\n\n {context}\n\n
+        prompt = f"""
+        Вы — аналитик, который составляет отчёт на основе сообщений. 
+        Ваша задача: проанализировать предоставленные данные и составить отчёт о позитивных и негативных событиях, а также интересных дискуссиях, связанных с запросом "{question}".
+
+        Формат ответа:
+        1. Позитивные события: [список событий]
+        2. Негативные события: [список событий]
+        3. Интересные дискуссии: [список тем или обсуждений]
+
+        Данные для анализа:
+        {context}
+
+        Составьте отчёт:
         """
-        print(2)
+        print("📝 Промпт для анализа:\n", prompt)
         return self.deepseek.answer_question(prompt)
 
     def answer_question(self, question: str, top_k=10, detailed=False) -> str:
