@@ -61,7 +61,7 @@ def load_embeddings_to_faiss(index_path="faiss_index.bin"):
                 faiss_manager.add_vectors(chunk_ids, new_embeddings, chunk_timestamps)
 
                 pbar.update(len(chunk))
-                if faiss_manager.index.ntotal > 100000:
+                if faiss_manager.index.ntotal > 10000:
                     break
 
         loaded_total = faiss_manager.index.ntotal

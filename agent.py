@@ -32,7 +32,7 @@ class CryptoChatAgent:
             vector = np.array(self.embedder.embed(query), dtype=np.float32)
 
             # Поиск с использованием FAISS с учетом времени
-            results = self.faiss.search_with_time_constraint(vector, k=top_k * 2, time_constraint_days=1)
+            results = self.faiss.search_with_time_constraint(vector, k=top_k, time_constraint_days=1)
 
             print(f"🔍 Результаты FAISS: {len(results)} записей")
 
@@ -86,6 +86,51 @@ class CryptoChatAgent:
                 torch.mps.empty_cache()
             elif torch.cuda.is_available():
                 torch.cuda.empty_cache()
+
+    def fetch_recent_messages(self):
+        """Получает все сообщения за последние сутки из таблицы message_embeddings."""
+        # Определяем временной диапазон: последние 24 часа
+        time_threshold = datetime.utcnow() - timedelta(days=1)
+
+        # SQL-запрос для получения message_id и embedding за последние сутки
+        query = select(
+            MessageEmbeddings.message_id,
+            MessageEmbeddings.embedding
+        ).where(
+            MessageEmbeddings.created_at >= time_threshold
+        )
+
+        # Выполняем запрос
+        result = self.db.execute(query).fetchall()
+
+        # Преобразуем результат в список словарей
+        recent_messages = [{"message_id": row[0], "embedding": np.array(row[1], dtype=np.float32)} for row in result]
+
+        print(f"📌 Найдено {len(recent_messages)} сообщений за последние сутки")
+        return recent_messages
+
+    def find_similar_messages(self, query_text: str, recent_messages: list, threshold: float = 0.29):
+        """Ищет похожие сообщения по косинусному расстоянию среди recent_messages."""
+        # Генерируем эмбеддинг для запроса
+        query_embedding = np.array(self.embedder.embed(query_text), dtype=np.float32)
+
+        # Преобразуем все эмбеддинги в массив для векторизованных вычислений
+        embeddings = np.stack([msg["embedding"] for msg in recent_messages])
+
+        # Вычисляем косинусное расстояние
+        dot_product = np.dot(embeddings, query_embedding)
+        norm_query = np.linalg.norm(query_embedding)
+        norm_embeddings = np.linalg.norm(embeddings, axis=1)
+        cosine_similarities = dot_product / (norm_query * norm_embeddings)
+        cosine_distances = 1 - cosine_similarities  # Преобразуем в расстояние
+
+        # Находим индекс ближайшего сообщения с расстоянием меньше порога
+        min_distance_idx = np.argmin(cosine_distances)
+        min_distance = cosine_distances[min_distance_idx]
+
+        if min_distance < threshold:
+            return recent_messages[min_distance_idx]["message_id"]
+        return None
 
     def analyze_context(self, messages: list[Messages], question: str) -> str:
         """Анализирует сообщения и формирует ключевые аспекты"""
@@ -170,18 +215,27 @@ class CryptoChatAgent:
             # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ [СПИСОК]==============")
             # print(f"answers_list: {answers}")
             print("===========НАЙДЕННЫЕ СООБЩЕНИЯ==============")
-            # Поиск сообщений по каждому элементу в positive_messages и negative_messages
+            """Собирает сообщения за сутки и ищет похожие по векторам."""
+            # Получаем все сообщения за последние сутки
+            recent_messages = self.fetch_recent_messages()
+
+            # Список для хранения найденных message_id
             messages = []
+
+            # Ищем похожие сообщения для positive_messages и negative_messages
             for message_list in [positive_messages, negative_messages]:
                 for message in message_list:
-                    found_messages = self.search_vector(message, top_k=top_k)
-                    messages.extend(found_messages)
+                    similar_message_id = self.find_similar_messages(message, recent_messages, threshold=0.29)
+                    if similar_message_id:
+                        messages.append(similar_message_id)
 
-            # Получение самих сообщений по их ID
-            messages = fetch_messages_by_ids(self.db, messages)
+            # Удаляем дубликаты
+            unique_messages = list(set(messages))
+            print(f"📌 Найдено {len(messages)} сообщений, после удаления дубликатов: {len(unique_messages)}")
 
-            print("+++++++++++++++++++++++++++")
-            print(f"messages: {messages}")
+            # Получаем сами сообщения по их ID
+            messages = fetch_messages_by_ids(self.db, unique_messages)
+            return messages
 
             for message in messages:
                 print(f"Отправитель[{message.date_creation}]: {message.full_name_sender or message.username_sender}\nСоообщение: {message.text_message}\n")
