@@ -4,22 +4,15 @@ import logging
 import re
 import torch
 from huggingface_hub import snapshot_download
-from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
+from transformers import AutoTokenizer, AutoModel, BitsAndBytesConfig
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class DeepSeekClient:
-    # def __init__(self, model_path="models/DeepSeek-R1-Distill-Qwen-7B-fp16",
-    #              hf_model_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"):
-    #     self.model_path = model_path
-    #     self.hf_model_name = hf_model_name
-    # def __init__(self, model_path="models/Llama-2-13b-hf", hf_model_name="meta-llama/Llama-2-13b-hf"):
-    #     self.model_path = model_path
-    #     self.hf_model_name = hf_model_name
-    def __init__(self, model_path="models/DeepSeek-R1-Distill-Qwen-14B",
-                 hf_model_name="deepseek-ai/DeepSeek-R1-Distill-Qwen-14B"):
+class Dream7BClient:
+    def __init__(self, model_path="models/Dream-v0-Instruct-7B",
+                 hf_model_name="Dream-org/Dream-v0-Instruct-7B"):
         self.model_path = model_path
         self.hf_model_name = hf_model_name
         self.device = self._get_best_device()
@@ -36,7 +29,6 @@ class DeepSeekClient:
             return "mps"
         else:
             return "cpu"
-
 
     def _is_model_downloaded(self) -> bool:
         required_files = ["config.json", "pytorch_model.bin", "tokenizer_config.json"]
@@ -61,10 +53,30 @@ class DeepSeekClient:
             logger.error(f"Ошибка при скачивании модели: {str(e)}")
             raise
 
+    def start(self):
+        """Загружаем модель и токенизатор"""
+        print("🔌 Запуск Dream7BClient...")
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
+        if self.tokenizer.eos_token is None:
+            self.tokenizer.add_special_tokens({"eos_token": "</s>"})
+
+        print(f"✅ Загружаем модель из {self.model_path} на {self.device}...")
+        quantization_config = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_compute_dtype=torch.float16
+        )
+        # Используем AutoModel вместо AutoModelForCausalLM, так как это диффузионная модель
+        self.model = AutoModel.from_pretrained(
+            self.model_path,
+            trust_remote_code=True,
+            torch_dtype=torch.float16,
+            quantization_config=quantization_config,
+            device_map="auto",
+            low_cpu_mem_usage=True
+        )
+
     def analyze_query(self, question: str) -> dict:
-        """
-        Анализ запроса, генерация JSON с ключевыми словами.
-        """
+        """Анализ запроса с генерацией JSON"""
         prompt = f"""
         You are a JSON generator.
         Return strictly ONE valid JSON object with fields "keywords" (array of strings) and "time_filter" (string).
@@ -72,70 +84,52 @@ class DeepSeekClient:
         {{"keywords":["ETH"],"time_filter":"last_week"}}
         Now output JSON for: {question}
         """
-
         inputs = self.tokenizer(prompt, return_tensors="pt", max_length=512, truncation=True)
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
 
+        # Гипотетический метод для диффузионной генерации (замените на реальный из кодовой базы)
         with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=1024,
-                do_sample=True,
-                temperature=0.6,
-                top_p=0.95,
-                pad_token_id=self.tokenizer.eos_token_id
+            # Пример: итеративное уточнение текста с 50 шагами диффузии
+            outputs = self.model.denoise(
+                inputs["input_ids"],
+                num_steps=50,  # Количество шагов диффузии
+                guidance_scale=1.0  # Параметр контроля, если применимо
             )
 
         response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-        # print(f"🔍 Сырые данные ответа:\n{response}")
-
-        # Находим первый фрагмент, который выглядит как JSON
         matches = re.findall(r"\{[\s\S]*?\}", response)
-
         if not matches:
             raise ValueError("❌ Модель не сгенерировала JSON!")
 
-        # Берём ПЕРВЫЙ найденный JSON-фрагмент
-        response_json = matches[1]
-
-        # Декодируем
+        response_json = matches[0]  # Берем первый JSON
         try:
             parsed_json = json.loads(response_json)
         except json.JSONDecodeError as e:
             print(f"❌ Ошибка декодирования JSON: {e}")
             raise
-
-        # print(f"✅ Извлечённый JSON:\n{parsed_json}")
         return parsed_json
 
     def answer_question(self, question: str) -> str:
+        """Ответ на вопрос с использованием диффузионной генерации"""
         if torch.cuda.is_available():
             print("🧹 Очищаем кэш GPU перед генерацией...")
-            torch.cuda.empty_cache()  # Очищаем кэш GPU перед генерацией
-        """
-        Отвечает на переданный текстовый вопрос напрямую, без дополнительных промтов.
+            torch.cuda.empty_cache()
 
-        :param question: Вопрос в виде строки
-        :return: Ответ модели в виде строки
-        """
         inputs = self.tokenizer(question, return_tensors="pt", max_length=512, truncation=True)
         inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        print(4)
+
         with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=1024,
-                do_sample=True,
-                temperature=0.6,
-                top_p=0.95,
-                pad_token_id=self.tokenizer.eos_token_id
+            # Гипотетический метод для диффузионной генерации
+            outputs = self.model.denoise(
+                inputs["input_ids"],
+                num_steps=50,  # Настраиваемый параметр
+                guidance_scale=1.0
             )
-        print(5)
         return self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
     def close(self):
-        """Явное освобождение ресурсов модели"""
-        print("🔌 Закрытие DeepSeekClient...")
+        """Освобождение ресурсов"""
+        print("🔌 Закрытие Dream7BClient...")
         del self.model
         del self.tokenizer
         if torch.cuda.is_available():
@@ -143,49 +137,11 @@ class DeepSeekClient:
         elif torch.backends.mps.is_available():
             torch.mps.empty_cache()
 
-    def start(self):
-        """Загружаем модели"""
-        print("🔌 Запуск DeepSeekClient...")
-        self.tokenizer = AutoTokenizer.from_pretrained(self.model_path, trust_remote_code=True)
-        if self.tokenizer.eos_token is None:
-            self.tokenizer.add_special_tokens({"eos_token": "</s>"})
-
-        print(f"✅ Загружаем модель из {self.model_path} на {self.device}...")
-
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16
-        )
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_path,
-            trust_remote_code=True,
-            torch_dtype=torch.float16,
-            quantization_config=quantization_config,
-            device_map="auto",
-            low_cpu_mem_usage=True,
-            attn_implementation="eager"
-        )
-
-        # self.model = AutoModelForCausalLM.from_pretrained(
-        #     self.model_path,
-        #     trust_remote_code=True,
-        #     torch_dtype=torch.float16,
-        #     quantization_config=quantization_config,
-        #     device_map="auto",  # Автоматически распределяет модель между GPU и CPU
-        #     low_cpu_mem_usage=True,
-        #     attn_implementation="eager"
-        # )
-
-        if self.model.config.eos_token_id is None:
-            self.model.config.eos_token_id = self.tokenizer.eos_token_id
-        if self.model.config.pad_token_id is None:
-            self.model.config.pad_token_id = self.model.config.eos_token_id
-
-        print(f"🔍 Текущая конфигурация модели: {self.model.config}")
-
 
 if __name__ == "__main__":
-    client = DeepSeekClient()
+    client = Dream7BClient()
+    client.start()
     question = "Какие новости о BTC за последний месяц?"
     result = client.analyze_query(question)
     print(result)
+    client.close()

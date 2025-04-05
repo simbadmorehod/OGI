@@ -1,11 +1,10 @@
 import re
 from datetime import datetime, timedelta
-
 import numpy as np
 import torch
-from scipy.spatial.distance import cosine  # Это правильный импорт для расстояния
+from scipy.spatial.distance import cosine
+from deepseek_client import Dream7BClient
 from models import Messages, MessageEmbeddings
-from deepseek_client import DeepSeekClient
 from embedder import StellaEmbedder
 from faiss_manager import FaissManager
 from sqlalchemy.future import select
@@ -20,29 +19,22 @@ def fetch_messages_by_ids(db: Session, message_ids: list[int]) -> list[Messages]
 
 class CryptoChatAgent:
     def __init__(self, db: Session, faiss_manager: FaissManager,
-                 deepseek: DeepSeekClient, embedder: StellaEmbedder):
-        self.embedder = embedder  # Инжектируем готовый объект
-        self.deepseek = deepseek
+                 dream_client: Dream7BClient, embedder: StellaEmbedder):
+        self.embedder = embedder
+        self.dream = dream_client  # Переименовал для ясности
         self.faiss = faiss_manager
         self.db = db
+        self.dream.start()  # Инициализируем модель при создании агента
 
     def search_vector(self, query: str, top_k: int = 5):
         try:
             print(f"🔍 Начало поиска для запроса: {query} top_k:{top_k}")
             vector = np.array(self.embedder.embed(query), dtype=np.float32)
-
-            # Поиск с использованием FAISS с учетом времени
             results = self.faiss.search_with_time_constraint(vector, k=top_k, time_constraint_days=1)
-
             print(f"🔍 Результаты FAISS: {len(results)} записей")
-
-            # Получаем сообщения из базы данных
-            message_ids = [result['id'] for result in results if result['score'] < 0.29]
-
+            message_ids = [result['id'] for result in results if result['score'] < 0.29]  # Исправлено
             print(f"📌 Найдено - search_vector {len(message_ids)} сообщений ")
-
             return message_ids
-
         except Exception as e:
             print(f"🔥 Ошибка при поиске search_vector: {str(e)}")
             raise
@@ -59,7 +51,6 @@ class CryptoChatAgent:
             print(f"🔍 Пользовательский запрос: {question}")
             question_vector = np.array(self.embedder.embed(question), dtype=np.float32)
             print(f"✅ Вектор сгенерирован. Размерность: {vector.shape}")
-            # Приводим вектор к 2D форме
             if vector.ndim == 1:
                 vector = vector.reshape(1, -1)
             results = self.faiss.search(vector, top_k)
@@ -67,14 +58,11 @@ class CryptoChatAgent:
             message_ids = [msg['id'] for msg in results if msg.get('score', 0) < 0.29]
             print(f"📌 Отфильтрованные ID: {message_ids}")
             embeddings = self.db.query(MessageEmbeddings).filter(MessageEmbeddings.message_id.in_(message_ids)).all()
-            # Вычисление схожести с question_vector
             similarities = []
             for emb in embeddings:
                 emb_vector = np.array(emb.embedding, dtype=np.float32)
                 similarity = 1 - cosine(question_vector, emb_vector)
                 similarities.append((emb.message_id, similarity))
-
-            # Находим самое похожее
             most_similar = max(similarities, key=lambda x: x[1])
             message_id = most_similar[0]
             return message_id
@@ -89,45 +77,29 @@ class CryptoChatAgent:
 
     def fetch_recent_messages(self):
         """Получает все сообщения за последние сутки из таблицы message_embeddings."""
-        # Определяем временной диапазон: последние 24 часа
         time_threshold = datetime.utcnow() - timedelta(days=1)
-
-        # SQL-запрос для получения message_id и embedding за последние сутки
         query = select(
             MessageEmbeddings.message_id,
             MessageEmbeddings.embedding
         ).where(
             MessageEmbeddings.created_at >= time_threshold
         )
-
-        # Выполняем запрос
         result = self.db.execute(query).fetchall()
-
-        # Преобразуем результат в список словарей
         recent_messages = [{"message_id": row[0], "embedding": np.array(row[1], dtype=np.float32)} for row in result]
-
         print(f"📌 Найдено {len(recent_messages)} сообщений за последние сутки")
         return recent_messages
 
     def find_similar_messages(self, query_text: str, recent_messages: list, threshold: float = 0.29):
         """Ищет похожие сообщения по косинусному расстоянию среди recent_messages."""
-        # Генерируем эмбеддинг для запроса
         query_embedding = np.array(self.embedder.embed(query_text), dtype=np.float32)
-
-        # Преобразуем все эмбеддинги в массив для векторизованных вычислений
         embeddings = np.stack([msg["embedding"] for msg in recent_messages])
-
-        # Вычисляем косинусное расстояние
         dot_product = np.dot(embeddings, query_embedding)
         norm_query = np.linalg.norm(query_embedding)
         norm_embeddings = np.linalg.norm(embeddings, axis=1)
         cosine_similarities = dot_product / (norm_query * norm_embeddings)
-        cosine_distances = 1 - cosine_similarities  # Преобразуем в расстояние
-
-        # Находим индекс ближайшего сообщения с расстоянием меньше порога
+        cosine_distances = 1 - cosine_similarities
         min_distance_idx = np.argmin(cosine_distances)
         min_distance = cosine_distances[min_distance_idx]
-
         if min_distance < threshold:
             return recent_messages[min_distance_idx]["message_id"]
         return None
@@ -150,7 +122,9 @@ class CryptoChatAgent:
         Составьте отчёт:
         """
         print("📝 Промпт для анализа:\n", prompt)
-        return self.deepseek.answer_question(prompt)
+        response = self.dream.answer_question(prompt)
+        response = re.sub(r'<[^>]+>', '', response)
+        return response
 
     def answer_question(self, question: str, top_k=10, detailed=False) -> str:
         try:
@@ -166,7 +140,6 @@ class CryptoChatAgent:
                 "Снова в зеленой зоне, заебись!",
                 "Прорвал сопротивление, заебись новость!"
             ]
-
             negative_messages = [
                 "Пиздец, цена опять упала!",
                 "Блять, мой стейблкоин потерял пег!",
@@ -180,67 +153,21 @@ class CryptoChatAgent:
                 "Хуета, опять слухи о запрете!"
             ]
 
-
-            # Генерация похожих вопросов
-            # questions = self.deepseek.answer_question(
-            #     f"Сгенерируй 10 вопросов, похожих на '{question}', в рамках блокчейн и крипто тематики. Верни только список вопросов, пронумеруй по порядку все 10 вопросов"
-            # )
-            # # Удаляем теги, если они есть
-            # questions = re.sub(r'<[^>]+>', '', questions)
-            # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ==============")
-            # print(f"questions: {questions}")
-            # # Разбиваем по переносам строк
-            # lines = questions.split('\n')
-            #
-            # # Фильтруем строки, которые начинаются с чисел (1., 2., ..., 10.) и убираем пустые строки
-            # question_list = [line.strip() for line in lines if line.strip() and re.match(r'^\d+\.\s', line)]
-            #
-            # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ[СПИСОК]==============")
-            # print(f"questions: {question_list}")
-            # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ЗАПРОСЫ [СПИСОК]==============")
-            # print(f"questions_list: {questions}")
-
-            # # Генерация потенциальных ответов
-            # answers = self.deepseek.answer_question(
-            #     f"Сгенерируй краткие потенциальные ответы на следующие вопросы: {question_list}. Ответы должны быть строго в рамках блокчейн и крипто тематики. В ответе верни только список ответов, пронумеруй по порядку все 10 потенциальных ответов ответов"
-            # )
-            # answers = re.sub(r'<[^>]+>', '', answers)
-            # # Разбиваем по переносам строк
-            # lines = answers.split('\n')
-
-            # Фильтруем строки, которые начинаются с чисел (1., 2., ..., 10.) и убираем пустые строки
-            # answers = [line.strip() for line in lines if line.strip() and re.match(r'^\d+\.\s', line)]
-            # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ==============")
-            # print(f"answers: {answers}")
-            # print("===========СГЕНЕРИРОВАННЫЕ ПОХОЖИЕ ОТВЕТЫ [СПИСОК]==============")
-            # print(f"answers_list: {answers}")
             print("===========НАЙДЕННЫЕ СООБЩЕНИЯ==============")
-            """Собирает сообщения за сутки и ищет похожие по векторам."""
-            # Получаем все сообщения за последние сутки
             recent_messages = self.fetch_recent_messages()
-
-            # Список для хранения найденных message_id
             messages = []
-
-            # Ищем похожие сообщения для positive_messages и negative_messages
             for message_list in [positive_messages, negative_messages]:
                 for message in message_list:
                     similar_message_id = self.find_similar_messages(message, recent_messages, threshold=0.29)
                     if similar_message_id:
                         messages.append(similar_message_id)
-
-            # Удаляем дубликаты
             unique_messages = list(set(messages))
             print(f"📌 Найдено {len(messages)} сообщений, после удаления дубликатов: {len(unique_messages)}")
-
-            # Получаем сами сообщения по их ID
             messages = fetch_messages_by_ids(self.db, unique_messages)
-
             for message in messages:
-                print(f"Отправитель[{message.date_creation}]: {message.full_name_sender or message.username_sender}\nСоообщение: {message.text_message}\n")
+                print(f"Отправитель[{message.date_creation}]: {message.full_name_sender or message.username_sender}\nСообщение: {message.text_message}\n")
                 print("--------------------------")
 
-            # Анализ контекста
             if len(messages) >= 1:
                 analysis = self.analyze_context(messages, question)
             else:
@@ -249,32 +176,31 @@ class CryptoChatAgent:
             print("===========АНАЛИТИКА СООБЩЕНИЙ==============")
             print(f"analysis: {analysis}")
 
-            # # Финальный промт
-            # prompt = f"""
-            # Ты — эксперт по блокчейну и криптовалютам. Пользователь задал вопрос: \"{question}\".
-            #
-            # У тебя есть результат анализа из похожих сообщений: {analysis}.
-            #
-            # Используй этот контекст, чтобы ответить на вопрос пользователя. Если контекст не содержит полезной информации, дай ответ на основе своих знаний.
-            #
-            # Ответ должен быть на том же языке, что и вопрос (если вопрос на русском, ответь на русском).
-            #
-            # {"Ответь максимально развёрнуто." if detailed and len(messages) > 1 else "Ответь кратко и по делу."}
-            # """
-            # response = self.deepseek.answer_question(prompt)
-            # response = re.sub(r'<[^>]+>', '', response)
-            return analysis if analysis else "Извините, я не смог получить ответ."
+            prompt = f"""
+            Ты — эксперт по блокчейну и криптовалютам. Пользователь задал вопрос: \"{question}\".
+
+            У тебя есть результат анализа из похожих сообщений: {analysis}.
+
+            Используй этот контекст, чтобы ответить на вопрос пользователя. Если контекст не содержит полезной информации, дай ответ на основе своих знаний.
+
+            Ответ должен быть на том же языке, что и вопрос (если вопрос на русском, ответь на русском).
+
+            {"Ответь максимально развёрнуто." if detailed and len(messages) > 1 else "Ответь кратко и по делу."}
+            """
+            response = self.dream.answer_question(prompt)
+            response = re.sub(r'<[^>]+>', '', response)
+            return response if response else "Извините, я не смог получить ответ."
         except Exception as e:
             return f"Произошла ошибка: {str(e)}"
-
         finally:
-            # Освобождаем PyTorch GPU / MPS память
             if torch.backends.mps.is_available():
                 torch.mps.empty_cache()
             elif torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
     def __del__(self):
-        """Деструктор для явного освобождения ресурсов"""
+        """Деструктор для освобождения ресурсов"""
         if hasattr(self, 'db'):
             self.db.close()
+        if hasattr(self, 'dream'):
+            self.dream.close()
