@@ -64,22 +64,32 @@ class Dream7BClient:
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_compute_dtype=torch.float16,
+            bnb_4bit_use_double_quant=True,  # Дополнительная оптимизация
             llm_int8_enable_fp32_cpu_offload=True  # Разрешаем выгрузку на CPU
         )
         # Явный device_map для распределения модели
-        device_map = {
-            "transformer": "cuda:0",  # Основные слои на GPU
-            "lm_head": "cpu",  # Голова модели на CPU
-            "embed_tokens": "cpu"  # Эмбеддинги на CPU
-        }
-        self.model = AutoModel.from_pretrained(
-            self.model_path,
-            trust_remote_code=True,
-            torch_dtype=torch.float16,
-            quantization_config=quantization_config,
-            device_map=device_map,  # Явное распределение
-            low_cpu_mem_usage=True
-        )
+        device_map = "auto"  # Попробуем auto с дополнительными настройками
+        try:
+            self.model = AutoModel.from_pretrained(
+                self.model_path,
+                trust_remote_code=True,
+                torch_dtype=torch.float16,
+                quantization_config=quantization_config,
+                device_map=device_map,
+                low_cpu_mem_usage=True
+            )
+        except ValueError as e:
+            print(f"Ошибка загрузки с device_map='auto': {e}")
+            print("Пробуем загрузку на CPU...")
+            device_map = "cpu"  # Fallback на CPU
+            self.model = AutoModel.from_pretrained(
+                self.model_path,
+                trust_remote_code=True,
+                torch_dtype=torch.float16,
+                quantization_config=quantization_config,
+                device_map=device_map,
+                low_cpu_mem_usage=True
+            )
 
     def analyze_query(self, question: str) -> dict:
         """Анализ запроса с генерацией JSON"""
