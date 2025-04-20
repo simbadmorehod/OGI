@@ -1,6 +1,6 @@
 import time
 import torch
-from deepseek_client import DeepSeekClient
+from deepseek_client import Dream7BClient
 from embedder import StellaEmbedder
 from fastapi import FastAPI, Depends
 from pydantic import BaseModel
@@ -16,8 +16,8 @@ if not torch.cuda.is_available():
 faiss_manager = load_embeddings_to_faiss()
 # faiss_manager = ''
 embedder = StellaEmbedder(device=torch.device("cuda"))
-deepseek = DeepSeekClient()
-deepseek.start()  # Загружаем модель один раз при старте
+dream_client = Dream7BClient()
+dream_client.start()  # Загружаем модель один раз при старте
 
 app = FastAPI()
 
@@ -39,7 +39,7 @@ def ask_question(request: QuestionRequest, db=Depends(get_db)):
     agent = CryptoChatAgent(
         db=db,
         faiss_manager=faiss_manager,
-        deepseek=deepseek,
+        dream_client=dream_client,
         embedder=embedder
     )
     print(1)
@@ -53,4 +53,4 @@ def ask_question(request: QuestionRequest, db=Depends(get_db)):
 @app.on_event("shutdown")
 def shutdown_event():
     print("🛑 Освобождаем ресурсы при завершении сервера")
-    deepseek.close()  # Освобождаем модель при выключении сервера
+    dream_client.close()  # Освобождаем модель при выключении сервера
