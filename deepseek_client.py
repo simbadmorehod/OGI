@@ -63,15 +63,21 @@ class Dream7BClient:
         print(f"✅ Загружаем модель из {self.model_path} на {self.device}...")
         quantization_config = BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_compute_dtype=torch.float16
+            bnb_4bit_compute_dtype=torch.float16,
+            llm_int8_enable_fp32_cpu_offload=True  # Разрешаем выгрузку на CPU
         )
-        # Используем AutoModel вместо AutoModelForCausalLM, так как это диффузионная модель
+        # Явный device_map для распределения модели
+        device_map = {
+            "transformer": "cuda:0",  # Основные слои на GPU
+            "lm_head": "cpu",  # Голова модели на CPU
+            "embed_tokens": "cpu"  # Эмбеддинги на CPU
+        }
         self.model = AutoModel.from_pretrained(
             self.model_path,
             trust_remote_code=True,
             torch_dtype=torch.float16,
             quantization_config=quantization_config,
-            device_map="auto",
+            device_map=device_map,  # Явное распределение
             low_cpu_mem_usage=True
         )
 
